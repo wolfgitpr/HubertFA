@@ -442,7 +442,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.validation_step_outputs["losses"].append(losses)
 
         label_type_id = label_type.cpu().numpy()[0]
-        if label_type_id >= 2:
+        if label_type_id >= 2 and dataloader_idx > 0:
             pred_tier = CustomPointTier(name="phones")
             target_tier = CustomPointTier(name="phones")
 

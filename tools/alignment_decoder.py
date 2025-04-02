@@ -66,7 +66,7 @@ class AlignmentDecoder:
 
         # [T]
         ph_edge_pred = (
-            (((torch.nn.functional.sigmoid(ph_edge_logits.float()) - 0.1) / 0.8).clamp(0.0, 1.0)).squeeze(0)
+            ((torch.nn.functional.sigmoid(ph_edge_logits.float())).clamp(0.0, 1.0)).squeeze(0)
             .cpu().numpy().astype("float32")
         )
 
@@ -254,7 +254,7 @@ class AlignmentDecoder:
             curr_ph_max_prob_log[1] = prob_log[0, 1]
 
         # forward
-        prob3_pad_len = 2 if S >= 2 else 1
+        prob3_pad_len = 1
         dp, backtrack_s, curr_ph_max_prob_log = self.forward_pass(
             T, S, prob_log, not_edge_prob_log, edge_prob_log, curr_ph_max_prob_log, dp, backtrack_s, ph_seq_id,
             prob3_pad_len
