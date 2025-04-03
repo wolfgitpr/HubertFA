@@ -334,7 +334,7 @@ class ForcedAlignmentBinarizer:
                 total_time += wav_length
                 items_meta_data["wav_lengths"].append(wav_length)
                 items_meta_data["label_types"].append(label_type_id)
-
+                h5py_item_data.create_dataset('name', data=str(item["name"]), dtype=h5py.string_dtype(encoding="utf-8"))
                 h5py_item_data["input_feature"] = units.cpu().numpy().astype("float32")
                 h5py_item_data["melspec"] = melspec.cpu().numpy().astype("float32")
                 h5py_item_data["label_type"] = label_type_id

@@ -304,7 +304,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_mask,  # (B vocab_size)
                 label_type,  # (B)
                 melspec,
-                ph_time
+                ph_time,
+                name
             ) = batch
 
             (
@@ -390,7 +391,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_mask,  # (B vocab_size)
             label_type,  # (B)
             melspec,
-            ph_time
+            ph_time,
+            name
         ) = batch
 
         (
@@ -414,11 +416,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
         fig = self.decoder.plot(melspec)
 
         self.logger.experiment.add_text(
-            f"valid/ctc_predict_{dataloader_idx}_{batch_idx}", " ".join([str(ph_id) for ph_id in ctc]), self.global_step
+            f"valid/ctc_predict_{name[0]}", " ".join([str(ph_id) for ph_id in ctc]), self.global_step
         )
-        self.logger.experiment.add_figure(
-            f"valid/plot_{dataloader_idx}_{batch_idx}", fig, self.global_step
-        )
+        self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
 
         losses = self._get_loss(
             ph_frame_logits,
