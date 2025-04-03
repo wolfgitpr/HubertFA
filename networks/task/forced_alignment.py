@@ -414,10 +414,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
         fig = self.decoder.plot(melspec)
 
         self.logger.experiment.add_text(
-            f"valid/ctc_predict_{batch_idx}", " ".join([str(ph_id) for ph_id in ctc]), self.global_step
+            f"valid/ctc_predict_{dataloader_idx}_{batch_idx}", " ".join([str(ph_id) for ph_id in ctc]), self.global_step
         )
         self.logger.experiment.add_figure(
-            f"valid/plot_{batch_idx}", fig, self.global_step
+            f"valid/plot_{dataloader_idx}_{batch_idx}", fig, self.global_step
         )
 
         losses = self._get_loss(
@@ -442,7 +442,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.validation_step_outputs["losses"].append(losses)
 
         label_type_id = label_type.cpu().numpy()[0]
-        if label_type_id >= 2 and dataloader_idx > 0:
+        if label_type_id >= 2:
             pred_tier = CustomPointTier(name="phones")
             target_tier = CustomPointTier(name="phones")
 
