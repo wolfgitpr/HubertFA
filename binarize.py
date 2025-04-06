@@ -351,15 +351,13 @@ class ForcedAlignmentBinarizer:
             h5py_meta_data[k] = np.array(v)
         h5py_file.close()
 
-        full_label_ratio = (items_meta_data["label_types"].count(2) + items_meta_data["label_types"].count(3)) / len(
-            items_meta_data["label_types"]
-        )
-        weak_label_ratio = items_meta_data["label_types"].count(1) / len(
-            items_meta_data["label_types"]
-        )
-        no_label_ratio = items_meta_data["label_types"].count(0) / len(
-            items_meta_data["label_types"]
-        )
+        len_types = 1 if len(items_meta_data["label_types"]) == 0 else len(items_meta_data["label_types"])
+
+        full_label_ratio = (items_meta_data["label_types"].count(2) + items_meta_data["label_types"].count(
+            3)) / len_types
+        weak_label_ratio = items_meta_data["label_types"].count(1) / len_types
+        no_label_ratio = items_meta_data["label_types"].count(0) / len_types
+
         print(
             "Data compression ratio: \n"
             f"    full label data: {100 * full_label_ratio:.2f} %,\n"
