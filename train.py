@@ -112,7 +112,8 @@ def main(config_path: str, pretrained_model_path, resume):
         config["hubert_config"],
         config["melspec_config"],
         config["optimizer_config"],
-        config["loss_config"]
+        config["loss_config"],
+        config
     )
 
     recent_checkpoints_callback = RecentCheckpointsCallback(

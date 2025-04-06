@@ -14,6 +14,9 @@ batch_max_length: 100 # unit: seconds
 binning_length: 1000 # unit: seconds
 drop_last: False
 
+draw_evaluate: False
+get_evaluate_loss: False
+
 # model
 model:
   hidden_dims: 192

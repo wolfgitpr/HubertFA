@@ -30,7 +30,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             hubert_config,
             melspec_config,
             optimizer_config,
-            loss_config
+            loss_config,
+            config
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -56,6 +57,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.melspec_config = melspec_config
         self.hubert_config = hubert_config
         self.optimizer_config = optimizer_config
+        self.config = config
 
         self.losses_names = [
             "ph_frame_GHM_loss",
@@ -412,34 +414,31 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_frame_logits, ph_edge_logits, ctc_logits, None, ph_seq_g2p, None, None
         )
 
-        ctc = self.decoder.ctc()
-        fig = self.decoder.plot(melspec)
+        if dataloader_idx == 0 or self.config.get("draw_evaluate", False):
+            fig = self.decoder.plot(melspec)
+            self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
 
-        self.logger.experiment.add_text(
-            f"valid/ctc_predict_{name[0]}", " ".join([str(ph_id) for ph_id in ctc]), self.global_step
-        )
-        self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
+        if dataloader_idx == 0 or self.config.get("get_evaluate_loss", False):
+            losses = self._get_loss(
+                ph_frame_logits,
+                ph_edge_logits,
+                ctc_logits,
+                ph_frame,
+                ph_edge,
+                ph_seq_id,
+                ph_seq_lengths,
+                ph_mask,
+                input_feature_lengths,
+                label_type,
+                valid=True
+            )
 
-        losses = self._get_loss(
-            ph_frame_logits,
-            ph_edge_logits,
-            ctc_logits,
-            ph_frame,
-            ph_edge,
-            ph_seq_id,
-            ph_seq_lengths,
-            ph_mask,
-            input_feature_lengths,
-            label_type,
-            valid=True
-        )
+            weights = self._losses_schedulers_call() * self.losses_weights
+            total_loss = (torch.stack(losses) * weights).sum()
+            losses.append(total_loss)
+            losses = torch.stack(losses)
 
-        weights = self._losses_schedulers_call() * self.losses_weights
-        total_loss = (torch.stack(losses) * weights).sum()
-        losses.append(total_loss)
-        losses = torch.stack(losses)
-
-        self.validation_step_outputs["losses"].append(losses)
+            self.validation_step_outputs["losses"].append(losses)
 
         label_type_id = label_type.cpu().numpy()[0]
         if label_type_id >= 2:
