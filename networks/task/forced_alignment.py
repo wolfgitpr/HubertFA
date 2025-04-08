@@ -484,13 +484,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
             weight_decay=self.optimizer_config["weight_decay"],
         )
         scheduler = {
-            "scheduler": lr_scheduler_module.OneCycleLR(
+            "scheduler": lr_scheduler_module.ExponentialLR(
                 optimizer,
-                max_lr=[
-                    self.optimizer_config["lr"]["backbone"],
-                    self.optimizer_config["lr"]["head"],
-                ],
-                total_steps=self.optimizer_config["total_steps"],
+                gamma=0.9999
             ),
             "interval": "step",
         }
