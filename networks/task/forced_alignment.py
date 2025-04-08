@@ -486,7 +486,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         scheduler = {
             "scheduler": lr_scheduler_module.ExponentialLR(
                 optimizer,
-                gamma=0.9999
+                gamma=self.optimizer_config["gamma"]
             ),
             "interval": "step",
         }
