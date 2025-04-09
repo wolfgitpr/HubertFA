@@ -37,8 +37,8 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 8.0, 0.1, 0.01, 0.1, 2.0 ]
-    enable_RampUpScheduler: [ False,False,False,True,True ]
+    weights: [ 8.0, 0.1, 0.01, 0.1, 0.0 ]
+    enable_RampUpScheduler: [ False,False,False,False,False ]
   function:
     num_bins: 10
     alpha: 0.999
