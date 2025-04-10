@@ -136,7 +136,7 @@ class ForcedAlignmentBinarizer:
         meta_data_df = self.get_meta_data(self.data_folder, vocab)
 
         meta_data_evaluate = meta_data_df[meta_data_df["label_type"] == "evaluate"]
-        meta_data_df.drop(meta_data_evaluate.index)
+        meta_data_df = meta_data_df.drop(meta_data_evaluate.index)
 
         # split train and valid set
         valid_set_size = int(self.valid_set_size)
