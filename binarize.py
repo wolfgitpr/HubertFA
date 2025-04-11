@@ -326,7 +326,8 @@ class ForcedAlignmentBinarizer:
                 if ph_id_seq is None:
                     continue
 
-                ph_seq = [ph for ph in item.ph_seq if vocab["vocab"][ph] != 0]
+                ph_seq_raw = [ph for ph in item.ph_seq]
+                ph_seq = [ph for ph in ph_seq_raw if vocab["vocab"][ph] != 0]
                 assert len(ph_seq) == len(ph_id_seq), "len(ph_seq) != len(ph_id_seq)"
 
                 h5py_item_data = h5py_items.create_group(str(idx))
@@ -338,6 +339,7 @@ class ForcedAlignmentBinarizer:
                 h5py_item_data["input_feature"] = units.cpu().numpy().astype("float32")
                 h5py_item_data["melspec"] = melspec.cpu().numpy().astype("float32")
                 h5py_item_data["label_type"] = label_type_id
+                h5py_item_data.create_dataset('ph_seq_raw', data=ph_seq_raw, dtype=h5py.string_dtype(encoding="utf-8"))
                 h5py_item_data.create_dataset('ph_seq', data=ph_seq, dtype=h5py.string_dtype(encoding="utf-8"))
                 h5py_item_data["ph_id_seq"] = ph_id_seq.astype("int32")
                 h5py_item_data["ph_edge"] = ph_edge.astype("float32")

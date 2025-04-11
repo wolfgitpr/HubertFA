@@ -307,7 +307,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 label_type,  # (B)
                 melspec,
                 ph_time,
-                name
+                name,
+                ph_seq_raw
             ) = batch
 
             (
@@ -394,7 +395,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             label_type,  # (B)
             melspec,
             ph_time,
-            name
+            name,
+            ph_seq_raw
         ) = batch
 
         (
@@ -403,15 +405,19 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ctc_logits,  # (B, T, vocab_size)
         ) = self.forward(input_feature.transpose(1, 2))
 
-        ph_seq_ignored = [ph for ph in ph_seq[0] if self.vocab["vocab"][ph] != 0]
-        ph_seq_g2p = ["SP"]
-        for ph in ph_seq_ignored:
-            ph_seq_g2p.append(ph)
-            ph_seq_g2p.append("SP")
+        ph_seq_g2p = []
+        last_ph = ""
+        for ph in ph_seq_raw[0]:
+            temp_ph = ph if self.vocab["vocab"][ph] != 0 else "SP"
+            if temp_ph == "SP" and last_ph == "SP":
+                continue
+            ph_seq_g2p.append(temp_ph)
+            last_ph = temp_ph
+
         (
             ph_seq_pred, ph_intervals_pred, _, _, _
         ) = self.decoder.decode(
-            ph_frame_logits, ph_edge_logits, ctc_logits, None, ph_seq_g2p, None, None
+            ph_frame_logits, ph_edge_logits, ctc_logits, None, ph_seq_g2p, None, None, False
         )
 
         if dataloader_idx == 0 or self.config.get("draw_evaluate", False):

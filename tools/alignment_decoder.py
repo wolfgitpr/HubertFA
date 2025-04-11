@@ -30,7 +30,8 @@ class AlignmentDecoder:
                wav_length: float | None,
                ph_seq: list[str],
                word_seq: list[str] = None,
-               ph_idx_to_word_idx: list[int] = None
+               ph_idx_to_word_idx: list[int] = None,
+               ignore_sp: bool = True,
                ):
         ph_seq_id = np.array([self.vocab["vocab"][ph] for ph in ph_seq])
         self.ph_seq_id = ph_seq_id
@@ -120,7 +121,7 @@ class AlignmentDecoder:
         word_idx_last = -1
         for i, ph_idx in enumerate(ph_idx_seq):
             # ph_idx只能用于两种情况：ph_seq和ph_idx_to_word_idx
-            if ph_seq[ph_idx] == "SP":
+            if ph_seq[ph_idx] == "SP" and ignore_sp:
                 continue
             ph_seq_pred.append(ph_seq[ph_idx])
             ph_intervals_pred.append(ph_intervals[i, :])

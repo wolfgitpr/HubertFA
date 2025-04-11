@@ -67,6 +67,7 @@ class MixedDataset(torch.utils.data.Dataset):
         name = item["name"][()].decode('utf-8')
         input_feature = np.array(item["input_feature"])  # [1,256,T]
         label_type = np.array(item["label_type"])
+        ph_seq_raw = [ph.decode('utf-8') for ph in item["ph_seq_raw"]]
         ph_seq = [ph.decode('utf-8') for ph in item["ph_seq"]]
         ph_id_seq = np.array(item["ph_id_seq"])
         ph_edge = np.array(item["ph_edge"])
@@ -75,7 +76,7 @@ class MixedDataset(torch.utils.data.Dataset):
         melspec = np.array(item["melspec"])
         ph_time = np.array(item["ph_time"])
 
-        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, label_type, melspec, ph_time, name
+        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, label_type, melspec, ph_time, name, ph_seq_raw
 
 
 class WeightedBinningAudioBatchSampler(torch.utils.data.Sampler):
@@ -279,6 +280,7 @@ def collate_fn(batch):
         ph_mask = torch.as_tensor(item[5])
         label_type = item[6]
         name = item[9]
+        ph_seq_raw = item[10]
 
         padded_batch.append((
             input_feature,
@@ -290,7 +292,8 @@ def collate_fn(batch):
             label_type,
             melspec,
             ph_time,
-            name
+            name,
+            ph_seq_raw,
         ))
 
     # Concatenate/stack tensors efficiently
@@ -304,6 +307,7 @@ def collate_fn(batch):
     melspecs = torch.cat([x[7] for x in padded_batch], dim=0)  # (B, C_mel, T)
     ph_times = torch.stack([x[8] for x in padded_batch])  # (B, S_ph)
     names = [x[9] for x in padded_batch]
+    ph_seq_raw = [x[10] for x in padded_batch]
 
     return (
         input_features,
@@ -317,5 +321,6 @@ def collate_fn(batch):
         label_types,
         melspecs,
         ph_times,
-        names
+        names,
+        ph_seq_raw
     )
