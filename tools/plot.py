@@ -10,6 +10,7 @@ def plot_for_valid(
         ph_frame_prob,
         ph_frame_id_gt,
         edge_prob,
+        ph_time_gt=None
 ):
     ph_seq = [i.split("/")[-1] for i in ph_seq]
     x = np.arange(melspec.shape[-1])
@@ -17,12 +18,21 @@ def plot_for_valid(
     fig, (ax1, ax2) = plt.subplots(2)
     ax1.imshow(melspec[0], origin="lower", aspect="auto")
 
+    draw_upper_blue = ph_time_gt is not None
+
     for i, interval in enumerate(ph_intervals):
-        if i == 0 or (i > 0 and ph_intervals[i - 1, 1] != interval[0]):
+        if i == 0 or (i > 0 and ph_intervals[i - 1][1] != interval[0]):
             if interval[0] > 0:
-                ax1.axvline(interval[0], color="r", linewidth=1)
+                if draw_upper_blue:
+                    ax1.axvline(interval[0], color="r", linewidth=1, ymin=0.5, ymax=1.0)
+                else:
+                    ax1.axvline(interval[0], color="r", linewidth=1)
+
         if interval[1] < melspec.shape[-1]:
-            ax1.axvline(interval[1], color="r", linewidth=1)
+            if draw_upper_blue:
+                ax1.axvline(interval[1], color="r", linewidth=1, ymin=0.5, ymax=1.0)
+            else:
+                ax1.axvline(interval[1], color="r", linewidth=1)
         if ph_seq[i] != "SP":
             if i % 2:
                 ax1.text(
@@ -43,10 +53,28 @@ def plot_for_valid(
                     color="white",
                 )
 
+    if draw_upper_blue:
+        for time in ph_time_gt:
+            if 0 <= time < melspec.shape[-1]:
+                ax1.axvline(time, color="b", linewidth=1, ymax=0.5)
+
     ax1.plot(
-        x, frame_confidence * melspec.shape[-2], color="black", linewidth=1, alpha=0.6
+        x, frame_confidence * melspec.shape[-2], color="black", linewidth=1, alpha=0.6, label='_nolegend_'
     )
-    ax1.fill_between(x, frame_confidence * melspec.shape[-2], color="black", alpha=0.3)
+    ax1.fill_between(x, frame_confidence * melspec.shape[-2], color="black", alpha=0.3, label='_nolegend_')
+
+    legend_elements = [
+        plt.Line2D([0], [0], color='r', lw=2, label='pred'),
+        plt.Line2D([0], [0], color='b', lw=2, label='gt')
+    ]
+
+    ax1.legend(
+        handles=legend_elements,
+        loc='upper right',
+        fontsize=10,
+        framealpha=0.9,
+        ncol=2
+    )
 
     ax2.imshow(
         ph_frame_prob.T,

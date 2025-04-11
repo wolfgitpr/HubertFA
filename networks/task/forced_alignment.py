@@ -421,7 +421,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         )
 
         if dataloader_idx == 0 or self.config.get("draw_evaluate", False):
-            fig = self.decoder.plot(melspec)
+            fig = self.decoder.plot(melspec, ph_time[0].cpu().numpy())
             self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
 
         if dataloader_idx == 0 or self.config.get("get_evaluate_loss", False):

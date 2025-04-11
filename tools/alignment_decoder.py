@@ -150,11 +150,17 @@ class AlignmentDecoder:
         ctc = ctc[ctc_index]
         return np.array([ph_id for ph_id in ctc if ph_id != 0])
 
-    def plot(self, melspec):
+    def plot(self, melspec, ph_time_gt=None):
         ph_idx_frame = np.zeros(self.ph_frame_pred.shape[0]).astype("int32")
         ph_intervals_pred_int = (
             (self.ph_intervals_pred / self.frame_length).round().astype("int32")
         )
+        if ph_time_gt is not None:
+            ph_time_gt_int = (
+                (ph_time_gt / self.frame_length).round().astype("int32")
+            )
+        else:
+            ph_time_gt_int = None
         last_ph_idx = 0
         for ph_idx, ph_time in zip(self.ph_idx_seq, self.ph_time_int_pred):
             ph_idx_frame[ph_time] += ph_idx - last_ph_idx
@@ -166,7 +172,8 @@ class AlignmentDecoder:
                               self.frame_confidence,
                               self.ph_frame_pred[:, self.ph_seq_id],
                               ph_idx_frame,
-                              self.edge_prob)
+                              self.edge_prob,
+                              ph_time_gt_int)
 
     @staticmethod
     @numba.jit
