@@ -142,14 +142,15 @@ class ForcedAlignmentBinarizer:
         valid_set_size = int(self.valid_set_size)
         if len(self.valid_sets) == 0:
             meta_data_valid = (
-                meta_data_df[meta_data_df["label_type"] != "no_label"]
+                meta_data_df[meta_data_df["label_type"] == "full_label"]
                 .sample(frac=1)
                 .sort_values(by="preferred", ascending=False)
                 .iloc[:valid_set_size, :]
             )
         else:
             meta_data_valid = (
-                meta_data_df[(meta_data_df["label_type"] != "no_label") & (meta_data_df["name"].isin(self.valid_sets))]
+                meta_data_df[
+                    (meta_data_df["label_type"] == "full_label") & (meta_data_df["name"].isin(self.valid_sets))]
             )
 
         meta_data_train = meta_data_df.drop(meta_data_valid.index).reset_index(drop=True)
