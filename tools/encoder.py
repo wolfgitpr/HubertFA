@@ -3,7 +3,6 @@ import torch.nn.functional as F
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from torchaudio.transforms import Resample
 from transformers import Wav2Vec2FeatureExtractor, HubertModel
-
 from whisper.audio import log_mel_spectrogram, pad_or_trim
 from whisper.model import ModelDimensions, Whisper
 
@@ -67,7 +66,7 @@ class Audio2HubertSoft(torch.nn.Module):
     def __init__(self, path, device='cpu', h_sample_rate=16000, h_hop_size=320):
         super().__init__()
         print(' [Encoder Model] HuBERT Soft')
-        self.hubert = HubertSoft()
+        self.hubert = HubertSoft().to(device)
         print(' [Loading] ' + path)
         checkpoint = torch.load(path)["hubert"]
         consume_prefix_in_state_dict_if_present(checkpoint, "module.")
