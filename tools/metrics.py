@@ -172,6 +172,44 @@ class IntersectionOverUnion(Metric):
         self.sum = {}
 
 
+def compute_lcs_matches(pred, target):
+    s1 = [point.mark for point in pred.points]
+    s2 = [point.mark for point in target.points]
+    m, n = len(s1), len(s2)
+
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if s1[i - 1] == s2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
+    i, j = m, n
+    matches = []
+    while i > 0 and j > 0:
+        if s1[i - 1] == s2[j - 1]:
+            matches.append((i - 1, j - 1))
+            i -= 1
+            j -= 1
+        elif dp[i - 1][j] > dp[i][j - 1]:
+            i -= 1
+        else:
+            j -= 1
+    matches.reverse()
+    return matches
+
+
+def get_matched_pairs(pred_tier: tg.PointTier, target_tier: tg.PointTier):
+    matches = compute_lcs_matches(pred_tier, target_tier)
+
+    pred_matched = [pred_tier.points[i] for i, _ in matches]
+
+    target_matched = [target_tier.points[j] for _, j in matches]
+
+    return pred_matched, target_matched
+
+
 class BoundaryEditDistance(Metric):
     """
     The total moving distance from the predicted boundaries to the target boundaries.
@@ -179,16 +217,22 @@ class BoundaryEditDistance(Metric):
 
     def __init__(self):
         self.distance = 0.0
+        self.phonemes = 0
+        self.error_phonemes = 0
 
     def update(self, pred: tg.PointTier, target: tg.PointTier):
-        # 确保音素完全一致
         if len(pred) != len(target):
-            return False
+            pred_lcs, target_lcs = get_matched_pairs(pred, target)
+            self.error_phonemes += abs(len(pred_lcs) - len(target))
+            pred = pred_lcs
+            target = target_lcs
+
+        self.phonemes += len(target)
+
         for i in range(len(pred)):
             if pred[i].mark != target[i].mark:
                 return False
 
-        # 计算边界距离
         for pred_point, target_point in zip(pred, target):
             self.distance += abs(pred_point.time - target_point.time)
         return True
@@ -245,4 +289,8 @@ class BoundaryEditRatioWeighted(Metric):
     def compute(self):
         if self.duration == 0.0:
             return 1.0
-        return round((self.distance_metric.compute() / self.duration) + (self.error / self.counts) * 0.1, 6)
+        return round(
+            (self.distance_metric.compute() / self.duration) /
+            (1 - self.distance_metric.error_phonemes / self.distance_metric.phonemes) +
+            (self.error / self.counts) * 0.2
+            , 6)
