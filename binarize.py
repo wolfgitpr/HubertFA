@@ -379,7 +379,11 @@ class ForcedAlignmentBinarizer:
 
             df["label_type"] = label_type
             df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
-            df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
+
+            if len(tuple_prefixes) > 0:
+                df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
+            else:
+                df["validation"] = False
 
             df["ph_seq"] = df["ph_seq"].apply(
                 lambda raw_str: ([ph for ph in raw_str.split(" ")] if isinstance(raw_str, str) else [])
