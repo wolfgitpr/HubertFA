@@ -2,21 +2,31 @@ import os
 import pathlib
 
 import click
-import h5py
 import numpy as np
 import pandas as pd
 import torch
 import yaml
 from tqdm import tqdm
 
+from tools.dataset import IndexedDatasetBuilder
 from tools.encoder import UnitsEncoder
 from tools.get_melspec import MelSpecExtractor
 from tools.load_wav import load_wav
+from tools.multiprocess_utils import chunked_multiprocess_run
+
+unitsEncoder = None
+get_melspec = None
 
 
 class ForcedAlignmentBinarizer:
     def __init__(self, binary_config):
         self.vocab = None
+
+        self.binary_config = binary_config
+
+        self.multiprocess_works = binary_config.get("multiprocess_works", 0)
+        self.multiprocess_max_size = binary_config.get("multiprocess_max_size", 100)
+        self.multiprocess_start_size = binary_config.get("multiprocess_start_size", 100)
 
         self.datasets = binary_config['datasets']
         self.binary_folder = pathlib.Path(binary_config['binary_folder'])
@@ -37,16 +47,7 @@ class ForcedAlignmentBinarizer:
         self.sample_rate = self.melspec_config["sample_rate"]
         self.frame_length = self.melspec_config["hop_length"] / self.sample_rate
 
-        self.get_melspec = MelSpecExtractor(**binary_config['melspec_config'], device=self.device)
-
         self.hop_size = binary_config['melspec_config']["hop_length"]
-
-        self.unitsEncoder = UnitsEncoder(
-            binary_config['hubert_config']["encoder"],
-            binary_config['hubert_config']["model_path"],
-            binary_config['hubert_config']["sample_rate"],
-            binary_config['hubert_config']["hop_size"],
-            self.device)
 
         self.hubert_channel = binary_config['hubert_config']["channel"]
 
@@ -156,13 +157,13 @@ class ForcedAlignmentBinarizer:
         assert len(meta_data_valid) > 0, "No valid data found."
 
         # binarize valid set
-        self.binarize("evaluate", meta_data_evaluate, self.vocab, self.binary_folder)
+        self.binarize("evaluate", meta_data_evaluate, self.binary_folder)
 
         # binarize valid set
-        self.binarize("valid", meta_data_valid, self.vocab, self.binary_folder)
+        self.binarize("valid", meta_data_valid, self.binary_folder)
 
         # binarize train set
-        self.binarize("train", meta_data_train, self.vocab, self.binary_folder)
+        self.binarize("train", meta_data_train, self.binary_folder)
 
     def make_ph_data(self, vocab, T, label_type_id, raw_ph_id_seq, raw_ph_dur):
         if label_type_id == 0:
@@ -258,120 +259,115 @@ class ForcedAlignmentBinarizer:
             return None, None, None, None, None
         return ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time
 
-    def make_input_feature(self, wav_path):
-        waveform = load_wav(wav_path, self.device, self.sample_rate)  # (L,)
-
-        wav_length = len(waveform) / self.sample_rate  # seconds
-        if wav_length > self.max_length:
-            print(
-                f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it."
-            )
-            return None, None, None
-
-        # units encode
-        units = self.unitsEncoder.encode(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, C, T]
-        melspec = self.get_melspec(waveform)  # [B, C, T]
-
-        B, C, T = units.shape
-        if C != self.hubert_channel:
-            raise f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
-
-        return units, melspec, wav_length
-
     def binarize(
             self,
             prefix: str,
             meta_data: pd.DataFrame,
-            vocab: dict,
             binary_data_folder: str | pathlib.Path,
     ):
         print(f"Binarizing {prefix} set...")
 
-        h5py_file_path = pathlib.Path(binary_data_folder) / (prefix + ".h5py")
-        h5py_file = h5py.File(h5py_file_path, "w")
-        h5py_meta_data = h5py_file.create_group("meta_data")
-        items_meta_data = {"label_types": [], "wav_lengths": []}
-        h5py_items = h5py_file.create_group("items")
+        args = []
+        builder = IndexedDatasetBuilder(binary_data_folder, prefix=prefix)
 
-        label_type_to_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}
+        for _, item in meta_data.iterrows():
+            args.append(item)
 
-        idx = 0
-        total_time = 0.0
-        for _, item in tqdm(meta_data.iterrows(), total=meta_data.shape[0]):
-            try:
-                # input_feature: [1, C, T]
-                if not os.path.exists(item["wav_path"]):
-                    continue
+        try:
+            if self.multiprocess_works > 0 and len(args) > self.multiprocess_start_size:
+                # code for parallel processing
+                for item in tqdm(
+                        chunked_multiprocess_run(self.process_item, args, num_workers=self.multiprocess_works,
+                                                 q_max_size=self.multiprocess_max_size),
+                        total=len(args)
+                ):
+                    if item is not None:
+                        builder.add_item(item)
+            else:
+                # code for single cpu processing
+                for a in tqdm(args):
+                    item = self.process_item(a)
+                    if item is not None:
+                        builder.add_item(item)
+        except KeyboardInterrupt:
+            builder.finalize()
+            raise
 
-                units, melspec, wav_length = self.make_input_feature(item.wav_path)
+        builder.finalize()
 
-                if units is None:
-                    print(f"{wav_length} extract units failed, skip it.")
-                    continue
-
-                # label_type: []
-                label_type_id = label_type_to_id[item.label_type]
-                if label_type_id >= 2:
-                    if len(item.ph_dur) != len(item.ph_id_seq):
-                        label_type_id = 1
-                    if len(item.ph_id_seq) == 0:
-                        label_type_id = 0
-
-                ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(vocab, units.shape[-1],
-                                                                                   label_type_id,
-                                                                                   item.ph_id_seq,
-                                                                                   item.ph_dur)
-
-                if ph_id_seq is None:
-                    continue
-
-                ph_seq_raw = [ph for ph in item.ph_seq]
-                ph_time_raw = np.array(np.concatenate(([0], [ph_t for ph_t in item.ph_dur]))).cumsum()[:-1]
-
-                ph_seq = [ph for ph in ph_seq_raw if vocab["vocab"][ph] != 0]
-                assert len(ph_seq) == len(ph_id_seq), "len(ph_seq) != len(ph_id_seq)"
-
-                h5py_item_data = h5py_items.create_group(str(idx))
-                idx += 1
-                total_time += wav_length
-                items_meta_data["wav_lengths"].append(wav_length)
-                items_meta_data["label_types"].append(label_type_id)
-                h5py_item_data.create_dataset('name', data=str(item["name"]), dtype=h5py.string_dtype(encoding="utf-8"))
-                h5py_item_data["input_feature"] = units.cpu().numpy().astype("float32")
-                h5py_item_data["melspec"] = melspec.cpu().numpy().astype("float32")
-                h5py_item_data["label_type"] = label_type_id
-                h5py_item_data.create_dataset('ph_seq_raw', data=ph_seq_raw, dtype=h5py.string_dtype(encoding="utf-8"))
-                h5py_item_data.create_dataset('ph_seq', data=ph_seq, dtype=h5py.string_dtype(encoding="utf-8"))
-                h5py_item_data["ph_id_seq"] = ph_id_seq.astype("int32")
-                h5py_item_data["ph_edge"] = ph_edge.astype("float32")
-                h5py_item_data["ph_frame"] = ph_frame.astype("int32")
-                h5py_item_data["ph_mask"] = ph_mask.astype("int32")
-                h5py_item_data["ph_time"] = ph_time.astype("float32")
-                h5py_item_data["ph_time_raw"] = ph_time_raw.astype("float32")
-            except Exception as e:
-                print(f"Failed to binarize: {item}: {e}")
-
-        for k, v in items_meta_data.items():
-            h5py_meta_data[k] = np.array(v)
-        h5py_file.close()
-
-        len_types = 1 if len(items_meta_data["label_types"]) == 0 else len(items_meta_data["label_types"])
-
-        full_label_ratio = (items_meta_data["label_types"].count(2) + items_meta_data["label_types"].count(
-            3)) / len_types
-        weak_label_ratio = items_meta_data["label_types"].count(1) / len_types
-        no_label_ratio = items_meta_data["label_types"].count(0) / len_types
-
-        print(
-            "Data compression ratio: \n"
-            f"    full label data: {100 * full_label_ratio:.2f} %,\n"
-            f"    weak label data: {100 * weak_label_ratio:.2f} %,\n"
-            f"    no label data: {100 * no_label_ratio:.2f} %."
-        )
+        total_time = sum(builder.wav_lengths)
         print(
             f"Successfully binarized {prefix} set, "
-            f"total time {total_time:.2f}s ({(total_time / 3600):.2f}h), saved to {h5py_file_path}"
+            f"total time {total_time:.2f}s ({(total_time / 3600):.2f}h), saved to {builder.path}"
         )
+
+    @torch.no_grad()
+    def process_item(self, _item):
+        global unitsEncoder
+        if unitsEncoder is None:
+            unitsEncoder = UnitsEncoder(
+                self.binary_config['hubert_config']["encoder"],
+                self.binary_config['hubert_config']["model_path"],
+                self.binary_config['hubert_config']["sample_rate"],
+                self.binary_config['hubert_config']["hop_size"],
+                self.device)
+
+        global get_melspec
+        if get_melspec is None:
+            get_melspec = MelSpecExtractor(**self.binary_config['melspec_config'], device=self.device)
+
+        try:
+            if not os.path.exists(wav_path := _item["wav_path"]):
+                return None
+
+            waveform = load_wav(wav_path, self.device, self.sample_rate)  # (L,)
+
+            wav_length = len(waveform) / self.sample_rate  # seconds
+            if wav_length > self.max_length:
+                print(
+                    f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it."
+                )
+                return None
+
+            # units encode
+            units = unitsEncoder.encode(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, C, T]
+            melspec = get_melspec(waveform)  # [B, C, T]
+
+            B, C, T = units.shape
+            if C != self.hubert_channel:
+                raise f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
+
+            label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
+            if label_type_id >= 2:
+                if len(_item.ph_dur) != len(_item.ph_id_seq): label_type_id = 1
+                if not _item.ph_id_seq: label_type_id = 0
+
+            ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
+                self.vocab, units.shape[-1], label_type_id, _item.ph_id_seq, _item.ph_dur
+            )
+            if ph_id_seq is None: return None
+
+            return {
+                "data": {
+                    'name': str(_item["name"]),
+                    'input_feature': units.cpu().numpy().astype("float32"),
+                    'melspec': melspec.cpu().numpy().astype("float32"),
+                    'ph_id_seq': ph_id_seq.astype("int32"),
+                    'ph_edge': ph_edge.astype("float32"),
+                    'ph_frame': ph_frame.astype("int32"),
+                    'ph_mask': ph_mask.astype("int32"),
+                    'ph_time': ph_time.astype("float32"),
+                    'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
+                    'ph_seq_raw': _item.ph_seq,
+                    'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0]
+                },
+                "label_type": label_type_id,
+                "wav_length": wav_length
+            }
+
+        except Exception as e:
+            print(f"error: {_item.get('name', 'unknown')}: {str(e)}")
+            return None
 
     def get_meta_data(self):
         print("Loading metadata...")

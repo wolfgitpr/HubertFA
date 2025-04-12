@@ -2,6 +2,13 @@ datasets_config: configs/datasets_config.yaml
 
 binary_folder: data/binary_base
 
+# 预处理线程数和暂存队列大小
+multiprocess_works: 0
+# size * num_works
+multiprocess_max_size: 200
+# 最小启动数据量
+multiprocess_start_size: 100
+
 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
 valid_set_size: 0
 max_length: 45 # 单条音频最大时长

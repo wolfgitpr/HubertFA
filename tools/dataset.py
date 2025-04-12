@@ -6,6 +6,39 @@ import pandas as pd
 import torch
 
 
+class IndexedDatasetBuilder:
+    def __init__(self, path, prefix):
+        self.path = pathlib.Path(path) / f'{prefix}.data'
+        self.prefix = prefix
+        self.dset = h5py.File(self.path, 'w')
+        self.h5_meta = self.dset.create_group("meta_data")
+        self.items = self.dset.create_group("items")
+
+        self.counter = 0
+
+        self.label_types = []
+        self.wav_lengths = []
+
+    def add_item(self, item):
+        if item is None:
+            return
+        group = self.items.create_group(str(self.counter))
+        self.counter += 1
+        for key, value in item["data"].items():
+            if key in ['name', 'ph_seq', 'ph_seq_raw']:
+                group.create_dataset(key, data=value, dtype=h5py.string_dtype(encoding="utf-8"))
+            else:
+                group[key] = value
+
+        self.label_types.append(item["label_type"])
+        self.wav_lengths.append(item["wav_length"])
+
+    def finalize(self):
+        self.h5_meta.create_dataset("label_types", data=np.array(self.label_types, dtype=np.int32))
+        self.h5_meta.create_dataset("wav_lengths", data=np.array(self.wav_lengths, dtype=np.float32))
+        self.dset.close()
+
+
 class MixedDataset(torch.utils.data.Dataset):
     def __init__(
             self,
@@ -41,7 +74,7 @@ class MixedDataset(torch.utils.data.Dataset):
 
     def _open_h5py_file(self):
         self.h5py_file = h5py.File(
-            str(pathlib.Path(self.binary_data_folder) / (self.prefix + ".h5py")), "r"
+            str(pathlib.Path(self.binary_data_folder) / (self.prefix + ".data")), "r"
         )
         self.label_types = np.array(self.h5py_file["meta_data"]["label_types"])
         self.wav_lengths = np.array(self.h5py_file["meta_data"]["wav_lengths"])
