@@ -123,7 +123,7 @@ class ForcedAlignmentBinarizer:
 
         # split train and valid set
         valid_set_size = int(self.valid_set_size)
-        if self.valid_set_size == 0:
+        if self.valid_set_size > 0:
             meta_data_valid = (
                 meta_data_df[meta_data_df["label_type"] == "full_label"]
                 .sample(frac=1)
@@ -135,6 +135,8 @@ class ForcedAlignmentBinarizer:
         meta_data_train = meta_data_df.drop(meta_data_valid.index).reset_index(drop=True)
         meta_data_valid = meta_data_valid.reset_index(drop=True)
         meta_data_evaluate = meta_data_evaluate.reset_index(drop=True)
+
+        assert len(meta_data_valid) > 0, "No valid data found."
 
         # binarize valid set
         self.binarize("evaluate", meta_data_evaluate, self.vocab, self.binary_folder)
@@ -274,7 +276,7 @@ class ForcedAlignmentBinarizer:
         items_meta_data = {"label_types": [], "wav_lengths": []}
         h5py_items = h5py_file.create_group("items")
 
-        label_type_to_id = {"no_label": 0, "weak_label": 1, "full_label": 2, "evaluate": 3}
+        label_type_to_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}
 
         idx = 0
         total_time = 0.0
@@ -307,6 +309,8 @@ class ForcedAlignmentBinarizer:
                     continue
 
                 ph_seq_raw = [ph for ph in item.ph_seq]
+                ph_time_raw = np.array(np.concatenate(([0], [ph_t for ph_t in item.ph_dur]))).cumsum()[:-1]
+
                 ph_seq = [ph for ph in ph_seq_raw if vocab["vocab"][ph] != 0]
                 assert len(ph_seq) == len(ph_id_seq), "len(ph_seq) != len(ph_id_seq)"
 
@@ -326,6 +330,7 @@ class ForcedAlignmentBinarizer:
                 h5py_item_data["ph_frame"] = ph_frame.astype("int32")
                 h5py_item_data["ph_mask"] = ph_mask.astype("int32")
                 h5py_item_data["ph_time"] = ph_time.astype("float32")
+                h5py_item_data["ph_time_raw"] = ph_time_raw.astype("float32")
             except Exception as e:
                 print(f"Failed to binarize: {item}: {e}")
 
@@ -365,14 +370,12 @@ class ForcedAlignmentBinarizer:
 
             csv_path = pathlib.Path(raw_data_dir) / "transcriptions.csv"
             wav_folder = pathlib.Path(raw_data_dir) / "wavs"
-            if not os.path.exists(csv_path) or not os.path.exists(wav_folder):
-                raise f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
+            assert csv_path.exists() and wav_folder.exists(), f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
 
             df = pd.read_csv(csv_path, dtype=str)
-            if "ph_seq" not in df.columns:
-                raise f"{csv_path.absolute()} does not contain 'ph_seq'."
-            if label_type == "full" and "ph_dur" not in df.columns:
-                raise f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
+            assert "ph_seq" in df.columns, f"{csv_path.absolute()} does not contain 'ph_seq'."
+            if label_type == "full":
+                assert "ph_dur" in df.columns, f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
 
             df["label_type"] = label_type
             df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
@@ -421,8 +424,8 @@ def load_yaml(yaml_path):
 def binarize(config_path: str):
     config = load_yaml(config_path)
 
-    datasets_config = pathlib.Path(config["datasets_config"]).absolute()
-    assert os.path.exists(datasets_config), f"{datasets_config} does not exist."
+    datasets_config = pathlib.Path(config["datasets_config"])
+    assert datasets_config.exists(), f"{datasets_config} does not exist."
 
     config.update(**load_yaml(datasets_config))
 

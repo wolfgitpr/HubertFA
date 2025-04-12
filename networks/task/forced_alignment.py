@@ -25,7 +25,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
     def __init__(
             self,
             vocab_text,
-            vowel_text,
             model_config,
             hubert_config,
             melspec_config,
@@ -37,7 +36,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.save_hyperparameters()
 
         self.vocab = yaml.safe_load(vocab_text)
-        self.vowel = yaml.safe_load(vowel_text)
         self.ignored_phones = self.vocab["ignored_phonemes"]
 
         self.backbone = UNetBackbone(
@@ -154,7 +152,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 self.device)
 
     def predict_step(self, batch, batch_idx):
-        wav_path, ph_seq, word_seq, ph_idx_to_word_idx = batch
+        wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = batch
+        ph_seq = [f"{language}/{ph}" if ph not in self.ignored_phones else ph for ph in ph_seq]
         waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
         wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
         input_feature = self.unitsEncoder.encode(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
@@ -308,7 +307,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 melspec,
                 ph_time,
                 name,
-                ph_seq_raw
+                ph_seq_raw,
+                ph_time_raw,
             ) = batch
 
             (
@@ -396,7 +396,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             melspec,
             ph_time,
             name,
-            ph_seq_raw
+            ph_seq_raw,
+            ph_time_raw,
         ) = batch
 
         (
@@ -421,7 +422,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         )
 
         if dataloader_idx == 0 or self.config.get("draw_evaluate", False):
-            fig = self.decoder.plot(melspec, ph_time[0].cpu().numpy())
+            fig = self.decoder.plot(melspec, ph_time_raw[0])
             self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
 
         if dataloader_idx == 0 or self.config.get("get_evaluate_loss", False):

@@ -34,6 +34,13 @@ from train import LitForcedAlignmentTask
     help="save confidence.csv",
 )
 @click.option(
+    "--language",
+    "-d",
+    default="zh",
+    type=str,
+    help="language of dictionary.(exp. zh ja en yue)",
+)
+@click.option(
     "--dictionary",
     "-d",
     default="dictionary/opencpop-extension.txt",

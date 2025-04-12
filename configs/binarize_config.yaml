@@ -1,6 +1,5 @@
 datasets_config: configs/datasets_config.yaml
 
-data_folder: data/
 binary_folder: data/binary_base
 
 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集

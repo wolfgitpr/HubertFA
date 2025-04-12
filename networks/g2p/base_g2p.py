@@ -17,6 +17,7 @@ class BaseG2P:
     def __init__(self, **kwargs):
         # args: list of str
         self.in_format = "lab"
+        self.language = kwargs["language"]
 
     def _g2p(self, input_text):
         # input text, return phoneme sequence, word sequence, and phoneme index to word index mapping
@@ -53,13 +54,13 @@ class BaseG2P:
                     with open(lab_path, "r", encoding="utf-8", ) as f:
                         lab_text = f.read().strip()
                     ph_seq, word_seq, ph_idx_to_word_idx = self(lab_text)
-                    dataset.append((wav_path, ph_seq, word_seq, ph_idx_to_word_idx))
+                    dataset.append((wav_path, ph_seq, word_seq, ph_idx_to_word_idx, self.language))
             except Exception as e:
                 e.args = (f" Error when processing {wav_path}: {e} ",)
         print(f"Loaded {len(dataset)} samples.")
 
         dataset = pd.DataFrame(
-            dataset, columns=["wav_path", "ph_seq", "word_seq", "ph_idx_to_word_idx"]
+            dataset, columns=["wav_path", "ph_seq", "word_seq", "ph_idx_to_word_idx", "language"]
         )
         dataset = DataFrameDataset(dataset)
         return dataset

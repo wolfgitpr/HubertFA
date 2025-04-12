@@ -50,10 +50,6 @@ def main(config_path: str, pretrained_model_path, resume):
         vocab = yaml.safe_load(f)
     vocab_text = yaml.safe_dump(vocab)
 
-    with open(pathlib.Path(config["binary_folder"]) / "vowel.yaml", encoding="utf-8") as f:
-        vowel = yaml.safe_load(f)
-    vowel_text = yaml.safe_dump(vowel)
-
     with open(pathlib.Path(config["binary_folder"]) / "global_config.yaml", encoding="utf-8") as f:
         config_global = yaml.safe_load(f)
     config.update(config_global)
@@ -107,7 +103,6 @@ def main(config_path: str, pretrained_model_path, resume):
     # model
     lightning_alignment_model = LitForcedAlignmentTask(
         vocab_text,
-        vowel_text,
         config["model"],
         config["hubert_config"],
         config["melspec_config"],
