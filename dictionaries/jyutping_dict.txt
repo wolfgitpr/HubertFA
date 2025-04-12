@@ -1,6 +1,3 @@
-SP	SP
-AP	AP
-ng	 ng
 aa	 aa
 aai	 aai
 aau	 aau

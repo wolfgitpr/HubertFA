@@ -1,6 +1,5 @@
 import os
 import pathlib
-import warnings
 
 import click
 import h5py
@@ -17,18 +16,19 @@ from tools.load_wav import load_wav
 
 class ForcedAlignmentBinarizer:
     def __init__(self, binary_config):
-        self.data_folder = pathlib.Path(binary_config['data_folder'])
+        self.vocab = None
+
+        self.datasets = binary_config['datasets']
         self.binary_folder = pathlib.Path(binary_config['binary_folder'])
 
+        self.valid_sets = []
         self.valid_set_size = binary_config['valid_set_size']
-        self.valid_sets = binary_config['valid_sets']
-        self.valid_set_preferred_folders = binary_config['valid_set_preferred_folders']
 
+        self.extra_phonemes = binary_config['extra_phonemes']
         self.ignored_phonemes = binary_config['ignored_phonemes']
         self.melspec_config = binary_config['melspec_config']
 
-        self.dictionary_paths = binary_config['dictionary_paths']
-        self.vowel_phonemes = binary_config['vowel_phonemes']
+        self.dictionaries = binary_config['dictionaries']
         self.merged_phoneme_groups = binary_config['merged_phoneme_groups'] if binary_config['merged_phoneme'] else []
 
         self.max_length = binary_config['max_length']
@@ -50,30 +50,50 @@ class ForcedAlignmentBinarizer:
 
         self.hubert_channel = binary_config['hubert_config']["channel"]
 
-    @staticmethod
-    def get_vocab(data_folder_path, ignored_phonemes, merged_phoneme_groups):
+    def get_vocab(self):
         print("Generating vocab...")
         phonemes = []
-        trans_path_list = data_folder_path.rglob("transcriptions.csv")
 
-        for trans_path in trans_path_list:
-            if trans_path.name == "transcriptions.csv":
-                df = pd.read_csv(trans_path)
-                ph = list(set(" ".join(df["ph_seq"]).split(" ")))
-                phonemes.extend(ph)
+        if self.extra_phonemes:
+            for ph in self.extra_phonemes:
+                if '/' in ph:
+                    lang, name = ph.split('/', maxsplit=1)
+                    if lang not in self.dictionaries:
+                        raise ValueError(
+                            f"Invalid phoneme tag '{ph}' in extra phonemes: "
+                            f"unrecognized language name '{lang}'."
+                        )
+                    if name in phonemes:
+                        raise ValueError(
+                            f"Invalid phoneme tag '{ph}' in extra phonemes: "
+                            f"short name conflicts with existing tag."
+                        )
+                phonemes.append(ph)
+
+        for lang, dict_path in self.dictionaries.items():
+            with open(dict_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    _word, _phonemes = line.strip("\n").split("\t")
+                    _phonemes = _phonemes.split()
+                    if '/' in _phonemes:
+                        raise ValueError(
+                            f"Invalid phoneme tag '{_phonemes}' in dictionary '{dict_path}': "
+                            f"should not contain the reserved character '/'."
+                        )
+                    phonemes.extend([f"{lang}/{ph}" if ph not in self.ignored_phonemes else ph for ph in _phonemes])
 
         phonemes = set(phonemes)
-        for p in ignored_phonemes:
+        for p in self.ignored_phonemes:
             if p in phonemes:
                 phonemes.remove(p)
         phonemes = sorted(phonemes)
         phonemes = ["SP", *phonemes]
 
-        merged_phoneme_groups.insert(0, ["SP", *ignored_phonemes])
+        self.merged_phoneme_groups.insert(0, ["SP", *self.ignored_phonemes])
 
         vocab = dict(zip(phonemes, range(len(phonemes))))  # phoneme: phoneme_id
 
-        for i, merged_phoneme_group in enumerate(merged_phoneme_groups):
+        for i, merged_phoneme_group in enumerate(self.merged_phoneme_groups):
             vocab.update({ph: i for ph in merged_phoneme_group})
 
         for ph in phonemes:
@@ -82,89 +102,48 @@ class ForcedAlignmentBinarizer:
 
         vocab_dict = {"vocab": vocab,
                       "vocab_size": len(phonemes),
-                      "ignored_phonemes": ["SP", *ignored_phonemes],
-                      "merged_phoneme_groups": merged_phoneme_groups,
+                      "ignored_phonemes": ["SP", *self.ignored_phonemes],
+                      "merged_phoneme_groups": self.merged_phoneme_groups,
                       }
 
         print(f"vocab_size is {len(phonemes)}")
 
         return vocab_dict
 
-    @staticmethod
-    def get_vowel(dictionary_paths, ignored_phonemes, vowel_phonemes, vocab):
-        print("Generating vowel phonemes...")
-        vowels = []
-
-        for path in dictionary_paths:
-            with open(path, "r", encoding="utf-8") as dict_file:
-                for line in dict_file:
-                    _, phonemes = line.strip().split('\t')
-                    phonemes = phonemes.split(' ')
-                    if len(phonemes) == 1:
-                        vowels.append(phonemes[0])
-                    elif len(phonemes) == 2:
-                        vowels.append(phonemes[1])
-
-        for v in vowel_phonemes:
-            vowels.append(v)
-
-        vowels = set(vowels)
-        for p in ignored_phonemes:
-            if p in vowels:
-                vowels.remove(p)
-        vowels = sorted(vowels)
-
-        vowel_dict = {}
-        for v in vowels:
-            if v in vocab["vocab"].keys():
-                vowel_dict[v] = vocab["vocab"][v]
-
-        print(f"vowels_size is {len(vowels)}")
-
-        return vowel_dict
-
     def process(self):
-        vocab = self.get_vocab(self.data_folder, self.ignored_phonemes, self.merged_phoneme_groups)
+        self.vocab = self.get_vocab()
         with open(self.binary_folder / "vocab.yaml", "w", encoding="utf-8") as file:
-            yaml.dump(vocab, file)
-
-        vowels = self.get_vowel(self.dictionary_paths, self.ignored_phonemes, self.vowel_phonemes, vocab)
-        with open(self.binary_folder / "vowel.yaml", "w", encoding="utf-8") as file:
-            yaml.dump(vowels, file)
+            yaml.dump(self.vocab, file)
 
         # load metadata of each item
-        meta_data_df = self.get_meta_data(self.data_folder, vocab)
+        meta_data_df = self.get_meta_data()
 
         meta_data_evaluate = meta_data_df[meta_data_df["label_type"] == "evaluate"]
         meta_data_df = meta_data_df.drop(meta_data_evaluate.index)
 
         # split train and valid set
         valid_set_size = int(self.valid_set_size)
-        if len(self.valid_sets) == 0:
+        if self.valid_set_size == 0:
             meta_data_valid = (
                 meta_data_df[meta_data_df["label_type"] == "full_label"]
                 .sample(frac=1)
-                .sort_values(by="preferred", ascending=False)
                 .iloc[:valid_set_size, :]
             )
         else:
-            meta_data_valid = (
-                meta_data_df[
-                    (meta_data_df["label_type"] == "full_label") & (meta_data_df["name"].isin(self.valid_sets))]
-            )
+            meta_data_valid = meta_data_df[meta_data_df["validation"] == True]
 
         meta_data_train = meta_data_df.drop(meta_data_valid.index).reset_index(drop=True)
         meta_data_valid = meta_data_valid.reset_index(drop=True)
         meta_data_evaluate = meta_data_evaluate.reset_index(drop=True)
 
         # binarize valid set
-        self.binarize("evaluate", meta_data_evaluate, vocab, self.binary_folder)
+        self.binarize("evaluate", meta_data_evaluate, self.vocab, self.binary_folder)
 
         # binarize valid set
-        self.binarize("valid", meta_data_valid, vocab, self.binary_folder)
+        self.binarize("valid", meta_data_valid, self.vocab, self.binary_folder)
 
         # binarize train set
-        self.binarize("train", meta_data_train, vocab, self.binary_folder)
+        self.binarize("train", meta_data_train, self.vocab, self.binary_folder)
 
     def make_ph_data(self, vocab, T, label_type_id, raw_ph_id_seq, raw_ph_dur):
         if label_type_id == 0:
@@ -372,61 +351,46 @@ class ForcedAlignmentBinarizer:
             f"total time {total_time:.2f}s ({(total_time / 3600):.2f}h), saved to {h5py_file_path}"
         )
 
-    def get_meta_data(self, data_folder, vocab):
-        full_path = pathlib.Path(os.path.join(data_folder, "full_label"))
-        weak_path = pathlib.Path(os.path.join(data_folder, "weak_label"))
-        evaluate_path = pathlib.Path(os.path.join(data_folder, "evaluate"))
-
-        trans_path_list = ([i for i in full_path.rglob("transcriptions.csv") if i.name == "transcriptions.csv"] +
-                           [i for i in weak_path.rglob("transcriptions.csv") if i.name == "transcriptions.csv"] +
-                           [i for i in evaluate_path.rglob("transcriptions.csv") if i.name == "transcriptions.csv"])
-        if len(trans_path_list) <= 0:
-            warnings.warn(f"No transcriptions.csv found in {data_folder}.")
-
+    def get_meta_data(self):
         print("Loading metadata...")
         meta_data_df = pd.DataFrame()
-        for trans_path in tqdm(trans_path_list):
-            df = pd.read_csv(trans_path, dtype=str)
-            df["wav_path"] = df["name"].apply(
-                lambda name: str(trans_path.parent / "wavs" / (str(name) + ".wav")),
+        for dataset in self.datasets:
+            language = dataset["language"]
+            label_type = dataset["label_type"]
+            raw_data_dir = dataset["raw_data_dir"]
+            test_prefixes = dataset["test_prefixes"]
+
+            assert label_type in ["full", "weak", "evaluate"], f"{label_type} not in ['full', 'weak', 'evaluate']."
+            tuple_prefixes = tuple([x for x in test_prefixes if x])
+
+            csv_path = pathlib.Path(raw_data_dir) / "transcriptions.csv"
+            wav_folder = pathlib.Path(raw_data_dir) / "wavs"
+            if not os.path.exists(csv_path) or not os.path.exists(wav_folder):
+                raise f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
+
+            df = pd.read_csv(csv_path, dtype=str)
+            if "ph_seq" not in df.columns:
+                raise f"{csv_path.absolute()} does not contain 'ph_seq'."
+            if label_type == "full" and "ph_dur" not in df.columns:
+                raise f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
+
+            df["label_type"] = label_type
+            df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
+            df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
+
+            df["ph_seq"] = df["ph_seq"].apply(
+                lambda raw_str: ([ph for ph in raw_str.split(" ")] if isinstance(raw_str, str) else [])
             )
 
-            df["preferred"] = df["wav_path"].apply(
-                lambda path_: (
-                    True if any([i in pathlib.Path(path_).parts for i in self.valid_set_preferred_folders])
-                    else False
-                ),
+            df["ph_seq"] = df["ph_seq"].apply(
+                lambda ph_seq: ([f"{language}/{ph}" if ph not in self.ignored_phonemes else ph for ph in ph_seq])
             )
 
-            conditions = [
-                df["wav_path"].str.contains("full_label"),
-                df["wav_path"].str.contains("weak_label"),
-                df["wav_path"].str.contains("evaluate")
-            ]
+            df["ph_id_seq"] = df["ph_seq"].apply(lambda ph_seq: ([self.vocab['vocab'][ph] for ph in ph_seq]))
 
-            choices = ["full_label", "weak_label", "evaluate"]
-
-            df["label_type"] = np.select(conditions, choices, default="no_label")
-            if len(meta_data_df) >= 1:
-                meta_data_df = pd.concat([meta_data_df, df])
-            else:
-                meta_data_df = df
-
-        no_label_df = pd.DataFrame(
-            {"wav_path": [i for i in (data_folder / "no_label").rglob("*.wav")]}
-        )
-        meta_data_df = pd.concat([meta_data_df, no_label_df])
-        meta_data_df["label_type"] = meta_data_df["label_type"].fillna("no_label")
+            meta_data_df = pd.concat([meta_data_df, df]) if len(meta_data_df) >= 1 else df
 
         meta_data_df.reset_index(drop=True, inplace=True)
-
-        meta_data_df["ph_seq"] = meta_data_df["ph_seq"].apply(
-            lambda x: ([i for i in x.split(" ")] if isinstance(x, str) else [])
-        )
-
-        meta_data_df["ph_id_seq"] = meta_data_df["ph_seq"].apply(
-            lambda x: ([vocab['vocab'][i] for i in x])
-        )
 
         if "ph_dur" in meta_data_df.columns:
             meta_data_df["ph_dur"] = meta_data_df["ph_dur"].apply(
@@ -439,6 +403,12 @@ class ForcedAlignmentBinarizer:
         return meta_data_df
 
 
+def load_yaml(yaml_path):
+    with open(yaml_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    return config
+
+
 @click.command()
 @click.option(
     "--config_path",
@@ -449,8 +419,12 @@ class ForcedAlignmentBinarizer:
     help="binarize config path",
 )
 def binarize(config_path: str):
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = load_yaml(config_path)
+
+    datasets_config = pathlib.Path(config["datasets_config"]).absolute()
+    assert os.path.exists(datasets_config), f"{datasets_config} does not exist."
+
+    config.update(**load_yaml(datasets_config))
 
     global_config = {
         "max_length": config["max_length"],

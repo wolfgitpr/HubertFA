@@ -1,0 +1,68 @@
+# Two-part dictionary used to determine vowels
+dictionaries:
+  zh: dictionaries/opencpop-extension.txt
+  ja: dictionaries/japanese_dict_full.txt
+#  en: dictionaries/ds_cmudict-07b.txt
+#  yue: dictionaries/jyutping_dict.txt
+
+extra_phonemes: [ ]
+
+ignored_phonemes:
+  - AP
+  - SP
+  - EP
+  - GS
+  - <AP>
+  - <SP>
+  - ''
+  - pau
+  - cl
+
+# 不建议开启
+merged_phoneme: False
+# merge phonemes
+merged_phoneme_groups:
+  - - zh/f
+    - en/f
+  - - zh/m
+    - en/m
+    - ja/m
+  - - zh/w
+    - en/w
+    - ja/w
+  - - zh/s
+    - en/s
+    - ja/s
+  - - zh/n
+    - en/n
+    - ja/n
+  - - zh/c
+    - ja/ts
+  - - zh/y
+    - en/y
+    - ja/y
+  - - zh/l
+    - en/l
+  - - zh/x
+    - ja/sh
+  - - ja/z
+    - en/z
+
+# raw_data_dir文件夹下包含transcriptions.csv（diffsinger格式）和wavs文件夹
+datasets:
+  # Chinese
+  - raw_data_dir: path/to/spk_1/raw
+    label_type: full
+    language: zh
+    test_prefixes:
+      - xxx
+  - raw_data_dir: path/to/spk_2/raw
+    label_type: weak
+    language: ja
+    test_prefixes:
+      - xxx
+  - raw_data_dir: path/to/spk_2/raw
+    label_type: evaluate
+    language: yue
+    test_prefixes:
+      - xxx

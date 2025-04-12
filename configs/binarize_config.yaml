@@ -1,44 +1,22 @@
+datasets_config: configs/datasets_config.yaml
+
+data_folder: data/
+binary_folder: data/binary_base
+
+# valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
+valid_set_size: 0
+max_length: 45 # 单条音频最大时长
+
+# hubertsoft:     model_path: xxx.pt      hid_dim: 256
+# cnhubert:       model_path: xxx_folder  hid_dim: 768    推荐
+# cnhubert-large: model_path: xxx_folder  hid_dim: 1024
+# whisper-ppg:    model_path: xxx.pt      hid_dim: 1024
 hubert_config:
-  # hubertsoft:     xxx.pt      hid_dim: 256
-  # cnhubert:       xxx_folder  hid_dim: 768    推荐
-  # cnhubert-large: xxx_folder  hid_dim: 1024
-  # whisper-ppg:    xxx.pt      hid_dim: 1024
   encoder: cnhubert
   model_path: dependencies/cnhubert
   sample_rate: 16000
   hop_size: 320
   channel: 768
-
-# 只检测data文件夹下，"full_label"、"weak_label"、"no_label"、"evaluate"文件夹内数据
-# evaluate路径固定为{datafolder}/evaluate，格式同full_label。可留空，此时evaluate_loss不生效
-data_folder: data/
-binary_folder: data/binary_base
-
-valid_set_size: 15
-# valid_sets: [] 时，按valid_set_size数量随机抽取
-valid_sets: [ ]
-valid_set_preferred_folders:
-  - test
-ignored_phonemes:
-  - AP
-  - SP
-  - EP
-  - GS
-  - <AP>
-  - <SP>
-  - ''
-  - pau
-  - cl
-
-# Mandatory marking as vowel
-vowel_phonemes:
-  - y
-  - w
-
-# Two-part dictionary used to determine vowels
-dictionary_paths:
-  - dictionary/opencpop-extension.txt
-max_length: 45 # unit: second
 
 melspec_config:
   n_mels: 128
@@ -49,24 +27,3 @@ melspec_config:
   fmin: 40
   fmax: 16000
   clamp: 0.00001
-
-# 不建议开启
-merged_phoneme: False
-merged_phoneme_groups:
-  - [ b,p ]
-  - [ d,t ]
-  - [ g,k ]
-  - [ z,c,s ]
-  - [ zh,ch,sh,r ]
-  - [ j,q,x ]
-
-  - [ a,ia,ua ]
-  - [ ai,uai ]
-  - [ ao,iao ]
-  - [ an,ian,van,En ]
-  - [ ang,iang,uang ]
-  - [ en,in,vn ]
-  - [ eng,ing ]
-  - [ ong,iong ]
-  - [ ou,iu ]
-  - [ ie,ve ]
