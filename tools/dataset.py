@@ -24,7 +24,7 @@ class IndexedDatasetBuilder:
             return
         group = self.items.create_group(str(self.counter))
         self.counter += 1
-        for key, value in item["data"].items():
+        for key, value in item.items():
             if key in ['name', 'ph_seq', 'ph_seq_raw']:
                 group.create_dataset(key, data=value, dtype=h5py.string_dtype(encoding="utf-8"))
             else:

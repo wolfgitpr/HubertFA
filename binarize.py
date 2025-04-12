@@ -348,19 +348,17 @@ class ForcedAlignmentBinarizer:
             if ph_id_seq is None: return None
 
             return {
-                "data": {
-                    'name': str(_item["name"]),
-                    'input_feature': units.cpu().numpy().astype("float32"),
-                    'melspec': melspec.cpu().numpy().astype("float32"),
-                    'ph_id_seq': ph_id_seq.astype("int32"),
-                    'ph_edge': ph_edge.astype("float32"),
-                    'ph_frame': ph_frame.astype("int32"),
-                    'ph_mask': ph_mask.astype("int32"),
-                    'ph_time': ph_time.astype("float32"),
-                    'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
-                    'ph_seq_raw': _item.ph_seq,
-                    'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0]
-                },
+                'name': str(_item["name"]),
+                'input_feature': units.cpu().numpy().astype("float32"),
+                'melspec': melspec.cpu().numpy().astype("float32"),
+                'ph_id_seq': ph_id_seq.astype("int32"),
+                'ph_edge': ph_edge.astype("float32"),
+                'ph_frame': ph_frame.astype("int32"),
+                'ph_mask': ph_mask.astype("int32"),
+                'ph_time': ph_time.astype("float32"),
+                'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
+                'ph_seq_raw': _item.ph_seq,
+                'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0],
                 "label_type": label_type_id,
                 "wav_length": wav_length
             }
