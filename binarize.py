@@ -52,7 +52,8 @@ class ForcedAlignmentBinarizer:
 
     def get_vocab(self):
         print("Generating vocab...")
-        phonemes = []
+        dataset_phonemes = []
+        dict_phonemes = []
 
         if self.extra_phonemes:
             for ph in self.extra_phonemes:
@@ -63,12 +64,25 @@ class ForcedAlignmentBinarizer:
                             f"Invalid phoneme tag '{ph}' in extra phonemes: "
                             f"unrecognized language name '{lang}'."
                         )
-                    if name in phonemes:
+                    if name in dataset_phonemes:
                         raise ValueError(
                             f"Invalid phoneme tag '{ph}' in extra phonemes: "
                             f"short name conflicts with existing tag."
                         )
-                phonemes.append(ph)
+                dataset_phonemes.append(ph)
+                dict_phonemes.append(ph)
+
+        for dataset in self.datasets:
+            language = dataset["language"]
+            raw_data_dir = dataset["raw_data_dir"]
+
+            csv_path = pathlib.Path(raw_data_dir) / "transcriptions.csv"
+            assert csv_path.exists(), f"{csv_path.absolute()} does not exist."
+
+            df = pd.read_csv(csv_path)
+            ph_seq = list(set(" ".join(df["ph_seq"]).split(" ")))
+
+            dataset_phonemes.extend([f"{language}/{ph}" if ph not in self.ignored_phonemes else ph for ph in ph_seq])
 
         for lang, dict_path in self.dictionaries.items():
             with open(dict_path, "r", encoding="utf-8") as f:
@@ -80,33 +94,36 @@ class ForcedAlignmentBinarizer:
                             f"Invalid phoneme tag '{_phonemes}' in dictionary '{dict_path}': "
                             f"should not contain the reserved character '/'."
                         )
-                    phonemes.extend([f"{lang}/{ph}" if ph not in self.ignored_phonemes else ph for ph in _phonemes])
+                    dict_phonemes.extend(
+                        [f"{lang}/{ph}" if ph not in self.ignored_phonemes else ph for ph in _phonemes])
 
-        phonemes = set(phonemes)
+        dataset_phonemes = set(dataset_phonemes)
         for p in self.ignored_phonemes:
-            if p in phonemes:
-                phonemes.remove(p)
-        phonemes = sorted(phonemes)
-        phonemes = ["SP", *phonemes]
+            if p in dataset_phonemes:
+                dataset_phonemes.remove(p)
+        dataset_phonemes = sorted(dataset_phonemes)
+        dataset_phonemes = ["SP", *dataset_phonemes]
 
         self.merged_phoneme_groups.insert(0, ["SP", *self.ignored_phonemes])
 
-        vocab = dict(zip(phonemes, range(len(phonemes))))  # phoneme: phoneme_id
+        vocab = dict(zip(dataset_phonemes, range(len(dataset_phonemes))))  # phoneme: phoneme_id
 
         for i, merged_phoneme_group in enumerate(self.merged_phoneme_groups):
             vocab.update({ph: i for ph in merged_phoneme_group})
 
-        for ph in phonemes:
+        for ph in dataset_phonemes:
             if ph not in vocab:
                 vocab[ph] = len(vocab)
 
         vocab_dict = {"vocab": vocab,
-                      "vocab_size": len(phonemes),
+                      "vocab_size": len(dataset_phonemes),
                       "ignored_phonemes": ["SP", *self.ignored_phonemes],
                       "merged_phoneme_groups": self.merged_phoneme_groups,
                       }
 
-        print(f"vocab_size is {len(phonemes)}")
+        print(f"vocab_size is {len(dataset_phonemes)}:")
+        print(f"+ {[x for x in dataset_phonemes if x not in dict_phonemes and x not in self.ignored_phonemes]}")
+        print(f"- {[x for x in dict_phonemes if x not in dataset_phonemes and x not in self.ignored_phonemes]}")
 
         return vocab_dict
 
