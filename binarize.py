@@ -366,7 +366,7 @@ class ForcedAlignmentBinarizer:
             test_prefixes = dataset["test_prefixes"]
 
             assert label_type in ["full", "weak", "evaluate"], f"{label_type} not in ['full', 'weak', 'evaluate']."
-            tuple_prefixes = tuple([x for x in test_prefixes if x])
+            tuple_prefixes = tuple([x for x in test_prefixes if x] if test_prefixes is not None else [])
 
             csv_path = pathlib.Path(raw_data_dir) / "transcriptions.csv"
             wav_folder = pathlib.Path(raw_data_dir) / "wavs"
