@@ -5,6 +5,7 @@ from networks.g2p.base_g2p import BaseG2P
 
 class DictionaryG2P(BaseG2P):
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         dict_path = kwargs["dictionary"]
         with open(dict_path, "r") as f:
             dictionary = f.read().strip().split("\n")

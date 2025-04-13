@@ -5,7 +5,7 @@ from networks.g2p.base_g2p import BaseG2P
 
 class NoneG2P(BaseG2P):
     def __init__(self, **kwargs):
-        pass
+        super().__init__(**kwargs)
 
     def _g2p(self, input_text):
         input_seq = input_text.strip().split(" ")

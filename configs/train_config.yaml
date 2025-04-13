@@ -26,7 +26,7 @@ model:
 
   use_trans: False
   transformer_nhead: 2
-  transformer_dim_feedforward: 512
+  transformer_dim_feedforward: 64
 
 optimizer_config:
   gamma: 0.9999
