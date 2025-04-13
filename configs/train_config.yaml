@@ -24,6 +24,10 @@ model:
   down_sampling_times: 3
   channels_scaleup_factor: 1.3
 
+  use_trans: False
+  transformer_nhead: 2
+  transformer_dim_feedforward: 512
+
 optimizer_config:
   gamma: 0.9999
   total_steps: 100000
@@ -37,8 +41,8 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 8.0, 0.1, 0.01, 0.1, 0.0 ]
-    enable_RampUpScheduler: [ False,False,False,False,False ]
+    weights: [ 8.0, 0.1, 0.01, 0.1, 2.0 ]
+    enable_RampUpScheduler: [ False,False,False,False,True ]
   function:
     num_bins: 10
     alpha: 0.999

@@ -1,9 +1,26 @@
 import torch
 import torch.nn as nn
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 from networks.layer.block.resnet_block import ResidualBasicBlock
 from networks.layer.scaling.base import BaseDowmSampling, BaseUpSampling
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
+
+
+class TransformerBottleneck(nn.Module):
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1):
+        super().__init__()
+        self.norm = nn.LayerNorm(d_model)
+        encoder_layers = TransformerEncoderLayer(
+            d_model, nhead, dim_feedforward, dropout,
+            batch_first=True,
+            activation='gelu'
+        )
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=2)
+
+    def forward(self, x):
+        x = self.norm(x)  # 保证Transformer输入稳定性
+        return self.transformer_encoder(x)
 
 
 class UNetBackbone(nn.Module):
@@ -18,6 +35,9 @@ class UNetBackbone(nn.Module):
             down_sampling_factor: int = 2,
             down_sampling_times: int = 5,
             channels_scaleup_factor: int = 2,
+            use_trans: bool = False,
+            transformer_nhead: int = 2,
+            transformer_dim_feedforward: int = 512
     ):
         """_summary_
 
@@ -64,6 +84,11 @@ class UNetBackbone(nn.Module):
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 down_sampling_factor,
             ),
+            TransformerBottleneck(
+                d_model=int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
+                nhead=transformer_nhead,
+                dim_feedforward=transformer_dim_feedforward
+            ) if use_trans else
             block(
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
