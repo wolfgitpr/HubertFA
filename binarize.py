@@ -143,7 +143,7 @@ class ForcedAlignmentBinarizer:
         valid_set_size = int(self.valid_set_size)
         if self.valid_set_size > 0:
             meta_data_valid = (
-                meta_data_df[meta_data_df["label_type"] == "full_label"]
+                meta_data_df[meta_data_df["label_type"] == "full"]
                 .sample(frac=1)
                 .iloc[:valid_set_size, :]
             )

@@ -179,6 +179,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_frame_logits, ph_edge_logits, ctc_logits, wav_length, ph_seq, word_seq, ph_idx_to_word_idx
         )
 
+        ph_seq = [x.split("/")[-1] for x in ph_seq]
+
         return (
             wav_path,
             wav_length,
