@@ -48,9 +48,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
             down_sampling_factor=model_config["down_sampling_factor"],  # 3
             down_sampling_times=model_config["down_sampling_times"],  # 7
             channels_scaleup_factor=model_config["channels_scaleup_factor"],  # 1.5
-            use_trans=model_config["use_trans"],
-            transformer_nhead=model_config["transformer_nhead"],
-            transformer_dim_feedforward=model_config["transformer_dim_feedforward"]
+            use_trans=model_config.get("use_trans", False),
+            transformer_nhead=model_config.get("transformer_nhead", 2),
+            transformer_dim_feedforward=model_config.get("transformer_dim_feedforward", 64),
         )
         self.head = nn.Linear(
             model_config["hidden_dims"], self.vocab["vocab_size"] + 2
