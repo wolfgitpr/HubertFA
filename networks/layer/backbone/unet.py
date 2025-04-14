@@ -26,13 +26,11 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerBottleneck(nn.Module):
-    def __init__(self, d_model, nhead=2, num_layers=2, dim_feedforward=64, dropout=0.1, use_pos_encoding=False):
+    def __init__(self, d_model, nhead=2, num_layers=2, dim_feedforward=64, dropout=0.1):
         super().__init__()
         self.norm_in = nn.LayerNorm(d_model)
-        self.use_pos_encoding = use_pos_encoding
 
-        if self.use_pos_encoding:
-            self.pos_encoder = PositionalEncoding(d_model, dropout)
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
 
         encoder_layers = TransformerEncoderLayer(
             d_model, nhead, dim_feedforward, dropout,
@@ -45,8 +43,7 @@ class TransformerBottleneck(nn.Module):
 
     def forward(self, x):
         x = self.norm_in(x)
-        if self.use_pos_encoding:
-            x = x + self.pos_encoder(x)
+        x = x + self.pos_encoder(x)
         x = self.transformer_encoder(x)
         return self.norm_out(self.dropout(x))
 
@@ -66,7 +63,6 @@ class UNetBackbone(nn.Module):
             use_trans: bool = False,
             transformer_nhead: int = 2,
             transformer_dim_feedforward: int = 512,
-            use_pos_encoding: bool = False,
             transformer_num_layers: int = 2,
             transformer_dropout: float = 0.1,
     ):
@@ -120,8 +116,7 @@ class UNetBackbone(nn.Module):
                 nhead=transformer_nhead,
                 num_layers=transformer_num_layers,
                 dim_feedforward=transformer_dim_feedforward,
-                dropout=transformer_dropout,
-                use_pos_encoding=use_pos_encoding
+                dropout=transformer_dropout
             ) if use_trans else
             block(
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,

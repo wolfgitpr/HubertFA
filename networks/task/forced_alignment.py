@@ -51,7 +51,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
             use_trans=model_config.get("use_trans", False),
             transformer_nhead=model_config.get("transformer_nhead", 2),
             transformer_dim_feedforward=model_config.get("transformer_dim_feedforward", 64),
-            use_pos_encoding=model_config.get("use_pos_encoding", False),
             transformer_num_layers=model_config.get("transformer_num_layers", 2),
             transformer_dropout=model_config.get("transformer_dropout", 0.1),
         )
@@ -86,12 +85,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         # loss function
         self.ph_frame_GHM_loss_fn = GHMLoss(
-            self.vocab["vocab_size"],
-            loss_config["function"]["num_bins"],
-            loss_config["function"]["alpha"],
-            loss_config["function"]["label_smoothing"],
-        )
-        self.pseudo_label_GHM_loss_fn = MultiLabelGHMLoss(
             self.vocab["vocab_size"],
             loss_config["function"]["num_bins"],
             loss_config["function"]["alpha"],
