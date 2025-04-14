@@ -28,6 +28,10 @@ model:
   transformer_nhead: 2
   transformer_dim_feedforward: 64
 
+  use_pos_encoding: False
+  transformer_num_layers: 2
+  transformer_dropout: 0.1
+
 optimizer_config:
   gamma: 0.9999
   total_steps: 100000

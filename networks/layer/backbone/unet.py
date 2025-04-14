@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
@@ -7,20 +9,46 @@ from networks.layer.scaling.base import BaseDowmSampling, BaseUpSampling
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 
 
-class TransformerBottleneck(nn.Module):
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1):
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
-        self.norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(p=dropout)
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.pe[:, :x.size(1)]
+        return self.dropout(x)
+
+
+class TransformerBottleneck(nn.Module):
+    def __init__(self, d_model, nhead=2, num_layers=2, dim_feedforward=64, dropout=0.1, use_pos_encoding=False):
+        super().__init__()
+        self.norm_in = nn.LayerNorm(d_model)
+        self.use_pos_encoding = use_pos_encoding
+
+        if self.use_pos_encoding:
+            self.pos_encoder = PositionalEncoding(d_model, dropout)
+
         encoder_layers = TransformerEncoderLayer(
             d_model, nhead, dim_feedforward, dropout,
             batch_first=True,
             activation='gelu'
         )
-        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=2)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, num_layers=num_layers)
+        self.norm_out = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        x = self.norm(x)  # 保证Transformer输入稳定性
-        return self.transformer_encoder(x)
+        x = self.norm_in(x)
+        if self.use_pos_encoding:
+            x = x + self.pos_encoder(x)
+        x = self.transformer_encoder(x)
+        return self.norm_out(self.dropout(x))
 
 
 class UNetBackbone(nn.Module):
@@ -37,7 +65,10 @@ class UNetBackbone(nn.Module):
             channels_scaleup_factor: int = 2,
             use_trans: bool = False,
             transformer_nhead: int = 2,
-            transformer_dim_feedforward: int = 512
+            transformer_dim_feedforward: int = 512,
+            use_pos_encoding: bool = False,
+            transformer_num_layers: int = 2,
+            transformer_dropout: float = 0.1,
     ):
         """_summary_
 
@@ -87,7 +118,10 @@ class UNetBackbone(nn.Module):
             TransformerBottleneck(
                 d_model=int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 nhead=transformer_nhead,
-                dim_feedforward=transformer_dim_feedforward
+                num_layers=transformer_num_layers,
+                dim_feedforward=transformer_dim_feedforward,
+                dropout=transformer_dropout,
+                use_pos_encoding=use_pos_encoding
             ) if use_trans else
             block(
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
