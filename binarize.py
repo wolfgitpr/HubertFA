@@ -445,8 +445,8 @@ def load_yaml(yaml_path):
     show_default=True,
     help="binarize config path",
 )
-def binarize(config_path: str):
-    config = load_yaml(config_path)
+def binarize(config: str):
+    config = load_yaml(config)
 
     datasets_config = pathlib.Path(config["datasets_config"])
     assert datasets_config.exists(), f"{datasets_config} does not exist."

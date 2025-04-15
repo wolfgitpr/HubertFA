@@ -38,12 +38,12 @@ from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback
     show_default=True,
     help="resume training from checkpoint",
 )
-def main(config_path: str, pretrained_model_path, resume):
+def main(config: str, pretrained_model_path, resume):
     os.environ[
         "TORCH_CUDNN_V8_API_ENABLED"
     ] = "1"  # Prevent unacceptable slowdowns when using 16 precision
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     with open(pathlib.Path(config["binary_folder"]) / "vocab.yaml", encoding="utf-8") as f:
