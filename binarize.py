@@ -334,8 +334,7 @@ class ForcedAlignmentBinarizer:
             melspec = get_melspec(waveform)  # [B, C, T]
 
             B, C, T = units.shape
-            if C != self.hubert_channel:
-                raise f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
+            assert C == self.hubert_channel, f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
 
             label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
             if label_type_id >= 2:
@@ -373,28 +372,38 @@ class ForcedAlignmentBinarizer:
         for dataset in self.datasets:
             language = dataset["language"]
             label_type = dataset["label_type"]
-            raw_data_dir = dataset["raw_data_dir"]
+            raw_data_dir = pathlib.Path(dataset["raw_data_dir"])
             test_prefixes = dataset.get("test_prefixes", [])
 
-            assert label_type in ["full", "weak", "evaluate"], f"{label_type} not in ['full', 'weak', 'evaluate']."
-            tuple_prefixes = tuple([x for x in test_prefixes if x] if test_prefixes is not None else [])
+            assert label_type in ["full", "weak", "evaluate", "blank"], \
+                f"{label_type} not in ['full', 'weak', 'evaluate','blank]."
+            if label_type == "blank":
+                df = pd.DataFrame(
+                    columns=["name", "ph_seq", "ph_id_seq", "label_type", "wav_length", "validation"])
+                assert raw_data_dir.exists(), f"{raw_data_dir} does not exist."
+                wavs_path = [i for i in raw_data_dir.rglob("*.wav")]
+                df["name"] = [os.path.splitext(os.path.basename(i))[0] for i in wavs_path]
+                df["wav_length"] = 0
+                df["validation"] = False
+            else:
+                tuple_prefixes = tuple([x for x in test_prefixes if x] if test_prefixes is not None else [])
 
-            csv_path = pathlib.Path(raw_data_dir) / "transcriptions.csv"
-            wav_folder = pathlib.Path(raw_data_dir) / "wavs"
-            assert csv_path.exists() and wav_folder.exists(), f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
+                csv_path = raw_data_dir / "transcriptions.csv"
+                wav_folder = raw_data_dir / "wavs"
+                assert csv_path.exists() and wav_folder.exists(), f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
 
-            df = pd.read_csv(csv_path, dtype=str)
-            assert "ph_seq" in df.columns, f"{csv_path.absolute()} does not contain 'ph_seq'."
-            if label_type == "full":
-                assert "ph_dur" in df.columns, f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
+                df = pd.read_csv(csv_path, dtype=str)
+                assert "ph_seq" in df.columns, f"{csv_path.absolute()} does not contain 'ph_seq'."
+                if label_type == "full":
+                    assert "ph_dur" in df.columns, f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
+
+                if len(tuple_prefixes) > 0:
+                    df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
+                else:
+                    df["validation"] = False
 
             df["label_type"] = label_type
             df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
-
-            if len(tuple_prefixes) > 0:
-                df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
-            else:
-                df["validation"] = False
 
             df["ph_seq"] = df["ph_seq"].apply(
                 lambda raw_str: ([ph for ph in raw_str.split(" ")] if isinstance(raw_str, str) else [])
