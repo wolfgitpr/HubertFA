@@ -15,7 +15,7 @@ from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback
 
 @click.command()
 @click.option(
-    "--config_path",
+    "--config",
     "-c",
     type=str,
     default="configs/train_config.yaml",

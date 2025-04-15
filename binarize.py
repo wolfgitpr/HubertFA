@@ -370,17 +370,17 @@ class ForcedAlignmentBinarizer:
         print("Loading metadata...")
         meta_data_df = pd.DataFrame()
         for dataset in self.datasets:
-            language = dataset["language"]
+            language = dataset.get("language", "blank")
             label_type = dataset["label_type"]
             raw_data_dir = pathlib.Path(dataset["raw_data_dir"])
             test_prefixes = dataset.get("test_prefixes", [])
 
+            assert raw_data_dir.exists(), f"{raw_data_dir} does not exist."
             assert label_type in ["full", "weak", "evaluate", "blank"], \
                 f"{label_type} not in ['full', 'weak', 'evaluate','blank]."
             if label_type == "blank":
                 df = pd.DataFrame(
                     columns=["name", "ph_seq", "ph_id_seq", "label_type", "wav_length", "validation"])
-                assert raw_data_dir.exists(), f"{raw_data_dir} does not exist."
                 wavs_path = [i for i in raw_data_dir.rglob("*.wav")]
                 df["name"] = [os.path.splitext(os.path.basename(i))[0] for i in wavs_path]
                 df["wav_length"] = 0
@@ -438,7 +438,7 @@ def load_yaml(yaml_path):
 
 @click.command()
 @click.option(
-    "--config_path",
+    "--config",
     "-c",
     type=str,
     default="configs/binarize_config.yaml",

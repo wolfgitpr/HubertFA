@@ -15,7 +15,7 @@ for csv in pathlib.Path(data_folder).rglob("transcriptions.csv"):
     print(parent_dir / f"{csv.name}")
     if os.path.exists(parent_dir / f"{csv.name}") and os.path.exists(parent_dir / "wavs"):
         with open(csv, "r", encoding="utf-8") as f:
-            df = pd.read_csv(f)
+            df = pd.read_csv(f, encoding="utf-8")
             assert len(df) > 2, f"{csv.name} must have at least 2 rows."
             assert "ph_seq" in df.columns, f"{csv.name} not contains 'ph_seq' column."
 
@@ -25,8 +25,8 @@ for csv in pathlib.Path(data_folder).rglob("transcriptions.csv"):
                 "raw_data_dir": str(parent_dir.absolute()) if absolute else str(parent_dir),
                 "label_type": label_type,
                 "language": language,
-                "test_prefixes": [df["name"][0]]
+                "test_prefixes": [str(df["name"][0])]
             })
 
 with open(out_data_config, "w", encoding="utf-8") as f:
-    yaml.dump({"datasets": csv_paths}, f)
+    yaml.dump({"datasets": csv_paths}, f, allow_unicode=True)

@@ -6,8 +6,9 @@ h5py
 librosa<0.10.0
 lightning>=2.0.0
 matplotlib~=3.7.3
-numpy~=1.24.1
+numpy~=1.23.5
 PyYAML~=6.0.1
+transformers
 tensorboard
 tensorboardX
 tqdm~=4.66.3
