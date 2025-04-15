@@ -74,6 +74,8 @@ class ForcedAlignmentBinarizer:
                 dict_phonemes.append(ph)
 
         for dataset in self.datasets:
+            if dataset.get("label_type", "blank") == "blank":
+                continue
             language = dataset.get("language", "blank")
             raw_data_dir = dataset["raw_data_dir"]
 
