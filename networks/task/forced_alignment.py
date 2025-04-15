@@ -16,7 +16,6 @@ from networks.loss.BinaryEMDLoss import BinaryEMDLoss
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from tools.alignment_decoder import AlignmentDecoder
 from tools.encoder import UnitsEncoder
-from tools.get_melspec import MelSpecExtractor
 from tools.load_wav import load_wav
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
 
@@ -106,7 +105,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.MSE_loss_fn = nn.MSELoss()
         self.CTC_GHM_loss_fn = CTCGHMLoss(alpha=1 - 1e-3)
 
-        self.get_melspec = None
         self.unitsEncoder = None
 
         self.decoder = AlignmentDecoder(self.vocab, self.melspec_config)
@@ -140,15 +138,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
         return torch.tensor([scheduler() for scheduler in self.losses_schedulers]).to(self.device)
 
     def on_predict_start(self):
-        if self.get_melspec is None:
-            self.get_melspec = MelSpecExtractor(**self.melspec_config)
         if self.unitsEncoder is None:
-            self.unitsEncoder = UnitsEncoder(
-                self.hubert_config["encoder"],
-                self.hubert_config["model_path"],
-                self.hubert_config["sample_rate"],
-                self.hubert_config["hop_size"],
-                self.device)
+            self.unitsEncoder = UnitsEncoder(self.hubert_config, self.melspec_config, self.device)
 
     def predict_step(self, batch, batch_idx):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = batch
@@ -156,7 +147,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
         wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
         input_feature = self.unitsEncoder.encode(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
-                                                 self.melspec_config["hop_length"])
+                                                 self.melspec_config["hop_length"])  # [B,C,T]
 
         with torch.no_grad():
             (

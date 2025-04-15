@@ -16,7 +16,7 @@ def chunked_worker_run(map_func, args, results_queue=None):
     for a in args:
         # noinspection PyBroadException
         try:
-            res = map_func(a)
+            res = map_func(*a)
             results_queue.put(res)
         except KeyboardInterrupt:
             break

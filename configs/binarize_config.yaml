@@ -13,16 +13,17 @@ multiprocess_start_size: 100
 valid_set_size: 0
 max_length: 45 # 单条音频最大时长
 
-# hubertsoft:     model_path: xxx.pt      hid_dim: 256
-# cnhubert:       model_path: xxx_folder  hid_dim: 768    推荐
-# cnhubert-large: model_path: xxx_folder  hid_dim: 1024
-# whisper-ppg:    model_path: xxx.pt      hid_dim: 1024
+# mel:            以melspec_config为准，channel需等于n_mels  效果比cnhubert差、无需依赖，推荐普通用户使用、方便分发
+# hubertsoft:     model_path: xxx.pt      channel: 256
+# cnhubert:       model_path: xxx_folder  channel: 768    自用或追求高精度用户，预处理体积约为44100 16bit wav的三倍
+# cnhubert-large: model_path: xxx_folder  channel: 1024
+# whisper-ppg:    model_path: xxx.pt      channel: 1024
 hubert_config:
-  encoder: cnhubert
+  encoder: mel
   model_path: dependencies/cnhubert
   sample_rate: 16000
   hop_size: 320
-  channel: 768
+  channel: 128
 
 melspec_config:
   n_mels: 128

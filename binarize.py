@@ -269,11 +269,13 @@ class ForcedAlignmentBinarizer:
     ):
         print(f"Binarizing {prefix} set...")
 
+        export_mel = False if prefix == "train" else True
+
         args = []
         builder = IndexedDatasetBuilder(binary_data_folder, prefix=prefix)
 
         for _, item in meta_data.iterrows():
-            args.append(item)
+            args.append((item, export_mel))
 
         try:
             if self.multiprocess_works > 0 and len(args) > self.multiprocess_start_size:
@@ -288,7 +290,7 @@ class ForcedAlignmentBinarizer:
             else:
                 # code for single cpu processing
                 for a in tqdm(args):
-                    item = self.process_item(a)
+                    item = self.process_item(*a)
                     if item is not None:
                         builder.add_item(item)
         except KeyboardInterrupt:
@@ -304,18 +306,14 @@ class ForcedAlignmentBinarizer:
         )
 
     @torch.no_grad()
-    def process_item(self, _item):
+    def process_item(self, _item, export_mel=False):
         global unitsEncoder
         if unitsEncoder is None:
-            unitsEncoder = UnitsEncoder(
-                self.binary_config['hubert_config']["encoder"],
-                self.binary_config['hubert_config']["model_path"],
-                self.binary_config['hubert_config']["sample_rate"],
-                self.binary_config['hubert_config']["hop_size"],
-                self.device)
+            unitsEncoder = UnitsEncoder(self.binary_config['hubert_config'], self.binary_config['melspec_config'],
+                                        self.device)
 
         global get_melspec
-        if get_melspec is None:
+        if get_melspec is None and export_mel:
             get_melspec = MelSpecExtractor(**self.binary_config['melspec_config'], device=self.device)
 
         try:
@@ -333,7 +331,7 @@ class ForcedAlignmentBinarizer:
 
             # units encode
             units = unitsEncoder.encode(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, C, T]
-            melspec = get_melspec(waveform)  # [B, C, T]
+            melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
             B, C, T = units.shape
             assert C == self.hubert_channel, f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
@@ -351,7 +349,7 @@ class ForcedAlignmentBinarizer:
             return {
                 'name': str(_item["name"]),
                 'input_feature': units.cpu().numpy().astype("float32"),
-                'melspec': melspec.cpu().numpy().astype("float32"),
+                'melspec': melspec.cpu().numpy().astype("float32") if export_mel else np.array([0]),
                 'ph_id_seq': ph_id_seq.astype("int32"),
                 'ph_edge': ph_edge.astype("float32"),
                 'ph_frame': ph_frame.astype("int32"),

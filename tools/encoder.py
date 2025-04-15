@@ -7,38 +7,47 @@ from whisper.audio import log_mel_spectrogram, pad_or_trim
 from whisper.model import ModelDimensions, Whisper
 
 from networks.hubert.model import HubertSoft
+from tools.get_melspec import MelSpecExtractor
 
 
 class UnitsEncoder:
-    def __init__(self, encoder, encoder_ckpt, encoder_sample_rate=16000, encoder_hop_size=320, device=None):
+    def __init__(self, hubert_config, mel_config, device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = device
+        self.mel_config = mel_config
+
+        self.encoder = hubert_config.get("encoder", "mel")
+        encoder_ckpt = hubert_config.get("model_path", None)
 
         is_loaded_encoder = False
-        if encoder == 'hubertsoft':
+        if self.encoder == "mel":
+            self.model = MelSpecExtractor(**self.mel_config, device=device)
+            is_loaded_encoder = True
+        if self.encoder == 'hubertsoft':
             self.model = Audio2HubertSoft(encoder_ckpt, device=device)
             is_loaded_encoder = True
-        if encoder == 'cnhubert':
+        if self.encoder == 'cnhubert':
             self.model = Audio2CNHubert(encoder_ckpt, device=device)
             is_loaded_encoder = True
-        if encoder == 'whisper-ppg':
+        if self.encoder == 'whisper-ppg':
             self.model = Audio2Whisper(encoder_ckpt, device=device)
             is_loaded_encoder = True
-        if encoder == 'hubertsofttta2x':
+        if self.encoder == 'hubertsofttta2x':
             self.model = Audio2HubertSoftTTA2X(encoder_ckpt, device=device)
             is_loaded_encoder = True
-        if not is_loaded_encoder:
-            raise ValueError(f" [x] Unknown units encoder: {encoder}")
+        assert is_loaded_encoder, f" [x] Unknown units encoder: {self.encoder}"
 
         self.resample_kernel = {}
-        self.encoder_sample_rate = encoder_sample_rate
-        self.encoder_hop_size = encoder_hop_size
+        self.encoder_sample_rate = hubert_config.get("sample_rate", 16000)
+        self.encoder_hop_size = hubert_config.get("hop_size", 320)
 
     def encode(self,
                audio,  # B, T
                sample_rate,
                hop_size):
+        if self.encoder == "mel":
+            return self.model(audio.squeeze(0))
         # resample
         if sample_rate == self.encoder_sample_rate:
             audio_res = audio
