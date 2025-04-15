@@ -24,12 +24,6 @@ model:
   down_sampling_times: 3
   channels_scaleup_factor: 1.3
 
-  use_trans: False
-  transformer_nhead: 2
-  transformer_dim_feedforward: 64
-  transformer_num_layers: 2
-  transformer_dropout: 0.1
-
 optimizer_config:
   gamma: 0.9999
   total_steps: 100000
