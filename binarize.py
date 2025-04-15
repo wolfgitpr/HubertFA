@@ -74,7 +74,7 @@ class ForcedAlignmentBinarizer:
                 dict_phonemes.append(ph)
 
         for dataset in self.datasets:
-            language = dataset["language"]
+            language = dataset.get("language", "blank")
             raw_data_dir = dataset["raw_data_dir"]
 
             csv_path = pathlib.Path(raw_data_dir) / "transcriptions.csv"
