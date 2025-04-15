@@ -5,7 +5,6 @@ import textgrid
 import torch
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler_module
-import yaml
 
 import networks.scheduler as scheduler_module
 from evaluate import remove_ignored_phonemes
@@ -23,7 +22,7 @@ from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, Vlabeler
 class LitForcedAlignmentTask(pl.LightningModule):
     def __init__(
             self,
-            vocab_text,
+            vocab,
             model_config,
             hubert_config,
             melspec_config,
@@ -34,7 +33,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.vocab = yaml.safe_load(vocab_text)
+        self.vocab = vocab
         self.ignored_phones = self.vocab["ignored_phonemes"]
 
         self.backbone = UNetBackbone(
@@ -141,8 +140,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
         ph_seq = [f"{language}/{ph}" if ph not in self.ignored_phones else ph for ph in ph_seq]
         waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
         wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
-        input_feature = self.unitsEncoder.encode(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
-                                                 self.melspec_config["hop_length"])  # [B,C,T]
+        input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
+                                                  self.melspec_config["hop_length"])  # [B,C,T]
 
         with torch.no_grad():
             (
@@ -408,7 +407,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_frame_logits, ph_edge_logits, ctc_logits, None, ph_seq_g2p, None, None, False
         )
 
-        if dataloader_idx == 0 or self.config.get("draw_evaluate", False):
+        if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))
+                and batch_idx < self.config.get("num_valid_plots", 20)):
             fig = self.decoder.plot(melspec, ph_time_raw[0])
             self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
 

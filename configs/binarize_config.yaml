@@ -1,6 +1,6 @@
 datasets_config: configs/datasets_config.yaml
 
-binary_folder: data/binary_base
+binary_folder: data/binary_base_mel
 
 # 预处理线程数和暂存队列大小
 multiprocess_works: 0

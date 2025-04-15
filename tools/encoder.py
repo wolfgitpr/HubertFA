@@ -10,8 +10,9 @@ from networks.hubert.model import HubertSoft
 from tools.get_melspec import MelSpecExtractor
 
 
-class UnitsEncoder:
+class UnitsEncoder(torch.nn.Module):
     def __init__(self, hubert_config, mel_config, device=None):
+        super().__init__()
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.device = device
@@ -42,10 +43,10 @@ class UnitsEncoder:
         self.encoder_sample_rate = hubert_config.get("sample_rate", 16000)
         self.encoder_hop_size = hubert_config.get("hop_size", 320)
 
-    def encode(self,
-               audio,  # B, T
-               sample_rate,
-               hop_size):
+    def forward(self,
+                audio,  # B, T
+                sample_rate,
+                hop_size):
         if self.encoder == "mel":
             return self.model(audio.squeeze(0))
         # resample

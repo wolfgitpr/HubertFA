@@ -1,5 +1,6 @@
 import os
 import pathlib
+import shutil
 
 import click
 import lightning as pl
@@ -46,22 +47,31 @@ def main(config: str, pretrained_model_path, resume):
     with open(config, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    with open(pathlib.Path(config["binary_folder"]) / "vocab.yaml", encoding="utf-8") as f:
+    binary_folder = pathlib.Path(config["binary_folder"])
+    with open(binary_folder / "vocab.yaml", encoding="utf-8") as f:
         vocab = yaml.safe_load(f)
-    vocab_text = yaml.safe_dump(vocab)
 
-    with open(pathlib.Path(config["binary_folder"]) / "global_config.yaml", encoding="utf-8") as f:
+    with open(binary_folder / "config.yaml", encoding="utf-8") as f:
         config_global = yaml.safe_load(f)
     config.update(config_global)
 
-    save_model_path = str(pathlib.Path("ckpt") / config["model_name"])
+    save_model_folder = pathlib.Path("ckpt") / config["model_name"]
+
+    os.makedirs(save_model_folder, exist_ok=True)
+
+    shutil.copy(binary_folder / "vocab.yaml", save_model_folder)
+    shutil.copy(binary_folder / "config.yaml", save_model_folder)
+
+    for lang, dict_path in vocab["dictionaries"].items():
+        shutil.copy(binary_folder / dict_path, save_model_folder)
+        print(f'| Copied dictionary for language-{lang}-{dict_path} to {save_model_folder}.')
 
     torch.set_float32_matmul_precision(config["float32_matmul_precision"])
     pl.seed_everything(config["random_seed"], workers=True)
 
     # define dataset
     num_workers = config['dataloader_workers']
-    train_dataset = MixedDataset(config["binary_folder"], prefix="train")
+    train_dataset = MixedDataset(binary_folder, prefix="train")
     train_sampler = WeightedBinningAudioBatchSampler(
         train_dataset.get_label_types(),
         train_dataset.get_wav_lengths(),
@@ -80,7 +90,7 @@ def main(config: str, pretrained_model_path, resume):
         prefetch_factor=(2 if num_workers > 0 else None),
     )
 
-    valid_dataset = MixedDataset(config["binary_folder"], prefix="valid")
+    valid_dataset = MixedDataset(binary_folder, prefix="valid")
     valid_dataloader = DataLoader(
         dataset=valid_dataset,
         batch_size=1,
@@ -90,7 +100,7 @@ def main(config: str, pretrained_model_path, resume):
         persistent_workers=num_workers > 0,
     )
 
-    evaluate_dataset = MixedDataset(config["binary_folder"], prefix="evaluate")
+    evaluate_dataset = MixedDataset(binary_folder, prefix="evaluate")
     evaluate_dataloader = DataLoader(
         dataset=evaluate_dataset,
         batch_size=1,
@@ -102,7 +112,7 @@ def main(config: str, pretrained_model_path, resume):
 
     # model
     lightning_alignment_model = LitForcedAlignmentTask(
-        vocab_text,
+        vocab,
         config["model"],
         config["hubert_config"],
         config["melspec_config"],
@@ -112,7 +122,7 @@ def main(config: str, pretrained_model_path, resume):
     )
 
     recent_checkpoints_callback = RecentCheckpointsCallback(
-        save_path=str(pathlib.Path("ckpt") / config["model_name"]),
+        save_path=save_model_folder,
         save_top_k=config["save_top_k"],
         save_every_steps=config["save_every_steps"],
     )
@@ -120,7 +130,7 @@ def main(config: str, pretrained_model_path, resume):
     stepProgressBar = StepProgressBar()
 
     evaluate_checkpoint = ModelCheckpoint(
-        dirpath=save_model_path,
+        dirpath=save_model_folder,
         monitor="unseen_evaluate/total",
         mode="min",
         save_top_k=6,
@@ -135,7 +145,7 @@ def main(config: str, pretrained_model_path, resume):
         precision=config["precision"],
         gradient_clip_val=config["gradient_clip_val"],
         gradient_clip_algorithm=config["gradient_clip_algorithm"],
-        default_root_dir=save_model_path,
+        default_root_dir=save_model_folder,
         val_check_interval=config["val_check_interval"],
         check_val_every_n_epoch=None,
         max_epochs=-1,
@@ -150,7 +160,7 @@ def main(config: str, pretrained_model_path, resume):
         lightning_alignment_model.load_pretrained(pretrained)
     elif resume:
         # resume training state
-        ckpt_path_list = (pathlib.Path("ckpt") / config["model_name"]).rglob("*.ckpt")
+        ckpt_path_list = save_model_folder.glob("*.ckpt")
         ckpt_path_list = sorted(
             ckpt_path_list, key=lambda x: int(x.stem.split("step=")[-1]), reverse=True
         )

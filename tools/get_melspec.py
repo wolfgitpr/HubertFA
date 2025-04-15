@@ -54,7 +54,7 @@ class MelSpectrogram(torch.nn.Module):
         return torch.log(torch.clamp(mel_output, min=self.clamp))
 
 
-class MelSpecExtractor:
+class MelSpecExtractor(torch.nn.Module):
     def __init__(
             self,
             n_mels,
@@ -67,21 +67,20 @@ class MelSpecExtractor:
             clamp,
             device=None,
     ):
-        global melspec_transform
+        super().__init__()
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        if melspec_transform is None:
-            melspec_transform = MelSpectrogram(
-                n_mel_channels=n_mels,
-                sampling_rate=sample_rate,
-                win_length=win_length,
-                hop_length=hop_length,
-                n_fft=n_fft,
-                mel_fmin=fmin,
-                mel_fmax=fmax,
-                clamp=clamp,
-            ).to(device)
+        self.melspec_transform = MelSpectrogram(
+            n_mel_channels=n_mels,
+            sampling_rate=sample_rate,
+            win_length=win_length,
+            hop_length=hop_length,
+            n_fft=n_fft,
+            mel_fmin=fmin,
+            mel_fmax=fmax,
+            clamp=clamp,
+        ).to(device)
 
     def __call__(self, waveform, key_shift=0):
-        return melspec_transform(waveform.unsqueeze(0))
+        return self.melspec_transform(waveform.unsqueeze(0))

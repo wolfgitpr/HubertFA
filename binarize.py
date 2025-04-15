@@ -1,5 +1,6 @@
 import os
 import pathlib
+import shutil
 
 import click
 import numpy as np
@@ -122,6 +123,7 @@ class ForcedAlignmentBinarizer:
                       "vocab_size": len(dataset_phonemes),
                       "ignored_phonemes": ["SP", *self.ignored_phonemes],
                       "merged_phoneme_groups": self.merged_phoneme_groups,
+                      "dictionaries": {k: os.path.basename(v) for k, v in self.dictionaries.items()},
                       }
 
         print(f"vocab_size is {len(dataset_phonemes)}:")
@@ -134,6 +136,9 @@ class ForcedAlignmentBinarizer:
         self.vocab = self.get_vocab()
         with open(self.binary_folder / "vocab.yaml", "w", encoding="utf-8") as file:
             yaml.dump(self.vocab, file)
+
+        for dict_path in self.dictionaries.values():
+            shutil.copy(dict_path, self.binary_folder)
 
         # load metadata of each item
         meta_data_df = self.get_meta_data()
@@ -330,7 +335,7 @@ class ForcedAlignmentBinarizer:
                 return None
 
             # units encode
-            units = unitsEncoder.encode(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, C, T]
+            units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, C, T]
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
             B, C, T = units.shape
@@ -459,7 +464,7 @@ def binarize(config: str):
         "hubert_config": config["hubert_config"],
     }
     os.makedirs(config["binary_folder"], exist_ok=True)
-    with open(pathlib.Path(config["binary_folder"]) / "global_config.yaml", "w", encoding="utf-8") as file:
+    with open(pathlib.Path(config["binary_folder"]) / "config.yaml", "w", encoding="utf-8") as file:
         yaml.dump(global_config, file)
 
     ForcedAlignmentBinarizer(config).process()
