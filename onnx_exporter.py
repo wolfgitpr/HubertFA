@@ -7,56 +7,9 @@ import onnx
 import onnxsim
 import torch
 import yaml
-from librosa.filters import mel
-from torch import nn
 
 from networks.task.forced_alignment import LitForcedAlignmentTask
-
-
-class MelSpectrogram_ONNX(nn.Module):
-    def __init__(
-            self,
-            n_mel_channels,
-            sampling_rate,
-            win_length,
-            hop_length,
-            n_fft=None,
-            mel_fmin=0,
-            mel_fmax=None,
-            clamp=1e-5
-    ):
-        super().__init__()
-        n_fft = win_length if n_fft is None else n_fft
-        mel_basis = mel(
-            sr=sampling_rate,
-            n_fft=n_fft,
-            n_mels=n_mel_channels,
-            fmin=mel_fmin,
-            fmax=mel_fmax,
-            htk=True)
-        mel_basis = torch.from_numpy(mel_basis).float()
-        self.register_buffer("mel_basis", mel_basis)
-        self.n_fft = win_length if n_fft is None else n_fft
-        self.hop_length = hop_length
-        self.win_length = win_length
-        self.sampling_rate = sampling_rate
-        self.n_mel_channels = n_mel_channels
-        self.clamp = clamp
-
-    def forward(self, audio, center=True):
-        fft = torch.stft(
-            audio,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            win_length=self.win_length,
-            window=torch.hann_window(self.win_length, device=audio.device),
-            center=center,
-            return_complex=False
-        )
-        magnitude = torch.sqrt(torch.sum(fft ** 2, dim=-1))
-        mel_output = torch.matmul(self.mel_basis, magnitude)
-        log_mel_spec = torch.log(torch.clamp(mel_output, min=self.clamp))
-        return log_mel_spec
+from tools.get_melspec import MelSpectrogram
 
 
 @torch.no_grad()
@@ -85,11 +38,12 @@ def export(ckpt_path, onnx_foler):
     assert hubert_config["encoder"] == "mel", f"{hubert_config['encoder']} must be 'mel'"
     assert not os.path.exists(onnx_path), f"Error: The file '{onnx_path}' already exists."
 
-    encoder = MelSpectrogram_ONNX(
+    encoder = MelSpectrogram(
         melspec_config["n_mels"], melspec_config["sample_rate"], melspec_config["win_length"],
-        melspec_config["hop_length"], melspec_config["n_fft"], melspec_config["fmin"], melspec_config["fmax"]
+        melspec_config["hop_length"], melspec_config["n_fft"], melspec_config["fmin"], melspec_config["fmax"],
+        device=device,
     )
-    waveform = torch.randn((1, 44100), dtype=torch.float32)
+    waveform = torch.randn((1, 44100), dtype=torch.float32, device=device)
     with torch.no_grad():
         torch.onnx.export(
             encoder,
@@ -101,7 +55,8 @@ def export(ckpt_path, onnx_foler):
                 'waveform': {1: 'n_samples'},
                 'input_feature': {1: 'n_samples'},
             },
-            opset_version=17
+            opset_version=17,
+            do_constant_folding=False
         )
         onnx_model, check = onnxsim.simplify(encoder_path, include_subgraph=True)
         assert check, 'Simplified ONNX model could not be validated'

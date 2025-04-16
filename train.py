@@ -48,10 +48,10 @@ def main(config: str, pretrained_model_path, resume):
         config = yaml.safe_load(f)
 
     binary_folder = pathlib.Path(config["binary_folder"])
-    with open(binary_folder / "vocab.yaml", encoding="utf-8") as f:
+    with open(binary_folder / "vocab.yaml", "r", encoding="utf-8") as f:
         vocab = yaml.safe_load(f)
 
-    with open(binary_folder / "config.yaml", encoding="utf-8") as f:
+    with open(binary_folder / "config.yaml", "r", encoding="utf-8") as f:
         config_global = yaml.safe_load(f)
     config.update(config_global)
 

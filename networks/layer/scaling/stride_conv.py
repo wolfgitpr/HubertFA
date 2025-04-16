@@ -22,9 +22,9 @@ class DownSampling(BaseDowmSampling):
 
     def forward(self, x):
         x = x.transpose(1, 2)
-        padding_len = x.shape[-1] % self.down_sampling_factor
-        if padding_len != 0:
-            x = nn.functional.pad(x, (0, self.down_sampling_factor - padding_len))
+        T = x.shape[-1]
+        padding_len = (-T) % self.down_sampling_factor
+        x = nn.functional.pad(x, (0, padding_len))
         return self.conv(x).transpose(1, 2)
 
 

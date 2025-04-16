@@ -1,5 +1,3 @@
-import math
-
 import torch
 import torch.nn as nn
 
@@ -102,9 +100,8 @@ class UNetBackbone(nn.Module):
                 x,  # [B, T, C]
                 ):
         T = x.shape[1]
-        padding_len = T % self.divisible_factor
-        if padding_len != 0:
-            x = nn.functional.pad(x, (0, 0, 0, self.divisible_factor - padding_len))
+        padding_len = (-T) % self.divisible_factor
+        x = nn.functional.pad(x, (0, 0, 0, padding_len))
 
         h = [x]
         for encoder in self.encoders:
