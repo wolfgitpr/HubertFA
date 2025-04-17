@@ -61,8 +61,8 @@ class UnitsEncoder(torch.nn.Module):
 
         # encode
         if audio_res.size(-1) < 400:
-            audio_res = torch.nn.functional.pad(audio, (0, 400 - audio_res.size(-1)))
-        units = self.model(audio_res)
+            audio_res = torch.nn.functional.pad(audio, (0, 400 - audio_res.size(-1)))  # [B, T]
+        units = self.model(audio_res)  # [B, T, C]
 
         # alignment
         n_frames = audio.size(-1) // hop_size + 1

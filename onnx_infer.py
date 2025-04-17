@@ -115,15 +115,18 @@ def infer(onnx_folder,
     config = load_config_from_yaml(config_file)
     vocab = load_config_from_yaml(onnx_folder / 'vocab.yaml')
 
+    hubert_config = config['hubert_config']
     melspec_config = config['melspec_config']
     dictionaries = vocab['dictionaries']
+
+    encoder_name = hubert_config['encoder']
 
     dictionary = kwargs.get("dictionary", None)
     if dictionary is None:
         dictionary = dictionaries[kwargs['language']]
     kwargs['dictionary'] = dictionary
 
-    encoder_session = create_session(onnx_folder / 'encoder.onnx')
+    encoder_session = create_session(onnx_folder / f"{encoder_name}-{hubert_config['channel']}.onnx")
     predict_session = create_session(onnx_folder / 'model.onnx')
 
     decoder = AlignmentDecoder(vocab, melspec_config)
@@ -148,8 +151,9 @@ def infer(onnx_folder,
             waveform = torchaudio.transforms.Resample(sr, melspec_config['sample_rate'])(waveform)
 
         wav_length = waveform.shape[0] / melspec_config["sample_rate"]
-        input_feature = encode(encoder_session, [waveform.numpy()])["input_feature"]  # [B,C,T]
 
+        input_feature = encode(encoder_session, [waveform.cpu().numpy()])[
+            "input_feature"]  # [B,C,T]
         results = predict(predict_session, input_feature.transpose(0, 2, 1))
 
         ph_frame_logits = torch.as_tensor(results['ph_frame_logits'], device=device)
