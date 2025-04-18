@@ -3,7 +3,7 @@
 
 # 介绍
 
-正在开发，当前效果不稳定！
+预发布版，不建议大规模分发。
 
 参考[SOFA](https://github.com/qiuqiao/SOFA)设计，更轻量化。
 
@@ -13,8 +13,9 @@ HubertFA是一个专为歌声设计的强制对齐器，同时也兼容非歌声
 
 ## 可选模型
 
-1. [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt)
-2. [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base)
+1. mel 效果比cnhubert略差，导出onnx仅13m、无需hubert依赖。特点：会将末尾混响包括在标准内 
+2. [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt) 介于mel、cnhubert效果之间，暂无onnx。特点：预处理文件体积适中
+3. [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base) 效果最好，预处理体积约为44100 16bit wav的三倍。onnx包括380m的hubert、暂时无法导出Wav2Vec2FeatureExtractor，建议优先使用ckpt。残血onnx效果仍强于以上两者。特点：极小数据集（半小时精标）效果略好，仅标出语义明显部分（丢弃发音末尾的混响）
 
 ## 环境配置
 
