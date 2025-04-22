@@ -2,9 +2,9 @@ datasets_config: configs/datasets_config.yaml
 
 binary_folder: data/binary_base_mel
 
-# 预处理线程数和暂存队列大小
+# 预处理线程数和暂存队列大小，数据量过少（5h以内）、内存低于16g、显存低于8g不建议开启。
 multiprocess_works: 0
-# size * num_works
+# size * num_works，过大需保证内存足够
 multiprocess_max_size: 200
 # 最小启动数据量
 multiprocess_start_size: 100
@@ -13,17 +13,13 @@ multiprocess_start_size: 100
 valid_set_size: 0
 max_length: 45 # 单条音频最大时长
 
-# mel:            以melspec_config为准，channel需等于n_mels  效果比cnhubert差、无需依赖，推荐普通用户使用、方便分发
-# hubertsoft:     model_path: xxx.pt      channel: 256
-# cnhubert:       model_path: xxx_folder  channel: 768    自用或追求高精度用户，预处理体积约为44100 16bit wav的三倍
-# cnhubert-large: model_path: xxx_folder  channel: 1024
-# whisper-ppg:    model_path: xxx.pt      channel: 1024
+# 参照readme表格配置, mel使用melspec_config和hubert_config的channel(与n_mels一致)
 hubert_config:
-  encoder: mel
+  encoder: cnhubert
   model_path: dependencies/cnhubert
   sample_rate: 16000
   hop_size: 320
-  channel: 128
+  channel: 768
 
 melspec_config:
   n_mels: 128

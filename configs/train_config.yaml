@@ -4,21 +4,22 @@ model_name: mandarin_opencpop-extension-cnhubert
 float32_matmul_precision: high
 random_seed: 123456
 
-# dataloader
 binary_folder: data/binary_base
 
+# 开的太高需要有足够内存、cpu
 dataloader_workers: 2
 dataloader_prefetch_factor: 2
-oversampling_weights: [ 1, 1, 1, 1 ] # full_label, weak_label, no_label, evaluate
+oversampling_weights: [ 1, 1, 1, 1 ] # full_label, weak_label, no_label, evaluate，此项无效、勿修改
 batch_max_length: 100 # unit: seconds
 binning_length: 1000 # unit: seconds
 drop_last: False
 
-num_valid_plots: 20
+num_valid_plots: 20 # val、evaluate各项最大绘制数量
+# 绘制evaluate/计算loss，暂未评估加入loss的效果，开启后val极慢
 draw_evaluate: False
 get_evaluate_loss: False
 
-# model
+# model，建议不修改，或对照实验
 model:
   hidden_dims: 192
   down_sampling_factor: 2

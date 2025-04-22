@@ -1,12 +1,15 @@
-# Two-part dictionary used to determine vowels
+# word /tab phoneme_1 /空格 phoneme_2 ...
+# 不同词典内的word不能重复
 dictionaries:
   zh: dictionaries/opencpop-extension.txt
   ja: dictionaries/japanese_dict_full.txt
 #  en: dictionaries/ds_cmudict-07b.txt
 #  yue: dictionaries/jyutping_dict.txt
 
+# 暂未启用
 extra_phonemes: [ ]
 
+# ignored_phonemes被视为空白字符，不标记
 ignored_phonemes:
   - AP
   - SP
@@ -50,21 +53,24 @@ merged_phoneme_groups:
 
 # raw_data_dir文件夹下包含transcriptions.csv（diffsinger格式）和wavs文件夹
 datasets:
-  # Chinese
+  # full 包括 name,ph_seq,ph_dur 列
   - raw_data_dir: path/to/spk_1/raw
     label_type: full
     language: zh
     test_prefixes:
       - xxx
+  # weak 包括 name,ph_seq 列
   - raw_data_dir: path/to/spk_2/raw
     label_type: weak
     language: ja
     test_prefixes:
       - xxx
+  # evaluate 同full，建议放unseen spk用于评测
   - raw_data_dir: path/to/spk_2/raw
     label_type: evaluate
     language: yue
     test_prefixes:
       - xxx
+  # blank 为无标注wav，不确定是否有效
   - raw_data_dir: path/to/spk_1/raw
     label_type: blank
