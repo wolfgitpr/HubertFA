@@ -28,6 +28,9 @@ HubertFA是一个专为歌声设计的强制对齐器，同时也兼容非歌声
 |        channel        |  128(同n_mels)   |                                              256                                               |                                  768                                   |
 |      model_path       |        无        |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
 
+[WavLM](https://huggingface.co/microsoft/wavlm-large)、[contentVec](https://ibm.box.com/s/z1wgl1stco8ffooyatzdwsqn2psd9lrr)、[whisper-ppg](https://openaipublic.azureedge.net/main/whisper/models/345ae4da62f9b3d59415adc60127b97c714f32e89e936602e85993674d08dcb1/medium.pt)
+不建议使用，体积较大且效果差于cnhubert
+
 ## 环境配置
 
 1. 使用`git clone`下载本仓库的代码，根据encoder表下载依赖模型，onnx通常在发布的压缩包内。
