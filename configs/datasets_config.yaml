@@ -9,13 +9,15 @@ dictionaries:
 # 暂未启用
 extra_phonemes: [ ]
 
-# ignored_phonemes被视为空白字符，不标记
-ignored_phonemes:
+# 公共音素（各语种通用）
+global_phonemes:
   - AP
-  - SP
   - EP
   - GS
-  - <AP>
+
+# 无声音素（内部会合并成一个id）
+silent_phonemes:
+  - SP
   - <SP>
   - ''
   - pau

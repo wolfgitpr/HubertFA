@@ -34,7 +34,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.save_hyperparameters()
 
         self.vocab = vocab
-        self.ignored_phones = self.vocab["ignored_phonemes"]
+        self.silent_phonemes = self.vocab["silent_phonemes"]
+        self.global_phonemes = self.vocab["global_phonemes"]
+        self.ignored_phones = self.silent_phonemes + self.global_phonemes
 
         self.backbone = UNetBackbone(
             input_dims=hubert_config["channel"],

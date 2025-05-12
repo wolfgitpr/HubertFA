@@ -1,10 +1,10 @@
-model_name: mandarin_opencpop-extension-cnhubert
+model_name: hfa-model-mel
 
 # settings
 float32_matmul_precision: high
 random_seed: 123456
 
-binary_folder: data/binary_base
+binary_folder: data/binary_base_mel
 
 # 开的太高需要有足够内存、cpu
 dataloader_workers: 2

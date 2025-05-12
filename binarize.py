@@ -36,7 +36,8 @@ class ForcedAlignmentBinarizer:
         self.valid_set_size = binary_config['valid_set_size']
 
         self.extra_phonemes = binary_config['extra_phonemes']
-        self.ignored_phonemes = binary_config['ignored_phonemes']
+        self.global_phonemes = binary_config['global_phonemes']
+        self.silent_phonemes = binary_config['silent_phonemes']
         self.melspec_config = binary_config['melspec_config']
 
         self.dictionaries = binary_config['dictionaries']
@@ -86,7 +87,10 @@ class ForcedAlignmentBinarizer:
             df = pd.read_csv(csv_path)
             ph_seq = list(set(" ".join(df["ph_seq"]).split(" ")))
 
-            dataset_phonemes.extend([f"{language}/{ph}" if ph not in self.ignored_phonemes else ph for ph in ph_seq])
+            dataset_phonemes.extend(
+                [ph if ph in self.silent_phonemes or ph in self.global_phonemes
+                 else f"{language}/{ph}" for ph in ph_seq]
+            )
 
         for lang, dict_path in self.dictionaries.items():
             with open(dict_path, "r", encoding="utf-8") as f:
@@ -99,16 +103,18 @@ class ForcedAlignmentBinarizer:
                             f"should not contain the reserved character '/'."
                         )
                     dict_phonemes.extend(
-                        [f"{lang}/{ph}" if ph not in self.ignored_phonemes else ph for ph in _phonemes])
+                        [ph if ph in self.silent_phonemes or ph in self.global_phonemes
+                         else f"{lang}/{ph}" for ph in _phonemes]
+                    )
 
         dataset_phonemes = set(dataset_phonemes)
-        for p in self.ignored_phonemes:
+        for p in self.silent_phonemes:
             if p in dataset_phonemes:
                 dataset_phonemes.remove(p)
         dataset_phonemes = sorted(dataset_phonemes)
         dataset_phonemes = ["SP", *dataset_phonemes]
 
-        self.merged_phoneme_groups.insert(0, ["SP", *self.ignored_phonemes])
+        self.merged_phoneme_groups.insert(0, list({"SP", *self.silent_phonemes}))
 
         vocab = dict(zip(dataset_phonemes, range(len(dataset_phonemes))))  # phoneme: phoneme_id
 
@@ -121,14 +127,17 @@ class ForcedAlignmentBinarizer:
 
         vocab_dict = {"vocab": vocab,
                       "vocab_size": len(dataset_phonemes),
-                      "ignored_phonemes": ["SP", *self.ignored_phonemes],
+                      "silent_phonemes": list({"SP", *self.silent_phonemes}),
+                      "global_phonemes": self.global_phonemes,
                       "merged_phoneme_groups": self.merged_phoneme_groups,
                       "dictionaries": {k: os.path.basename(v) for k, v in self.dictionaries.items()},
                       }
 
         print(f"vocab_size is {len(dataset_phonemes)}:")
-        print(f"+ {[x for x in dataset_phonemes if x not in dict_phonemes and x not in self.ignored_phonemes]}")
-        print(f"- {[x for x in dict_phonemes if x not in dataset_phonemes and x not in self.ignored_phonemes]}")
+        print(
+            f"+ {[x for x in dataset_phonemes if x not in dict_phonemes and x not in self.silent_phonemes and x not in self.global_phonemes]}")
+        print(
+            f"- {[x for x in dict_phonemes if x not in dataset_phonemes and x not in self.silent_phonemes and x not in self.global_phonemes]}")
 
         return vocab_dict
 
@@ -415,7 +424,8 @@ class ForcedAlignmentBinarizer:
             )
 
             df["ph_seq"] = df["ph_seq"].apply(
-                lambda ph_seq: ([f"{language}/{ph}" if ph not in self.ignored_phonemes else ph for ph in ph_seq])
+                lambda ph_seq: ([ph if ph in self.silent_phonemes or ph in self.global_phonemes
+                                 else f"{language}/{ph}" for ph in ph_seq])
             )
 
             df["ph_id_seq"] = df["ph_seq"].apply(lambda ph_seq: ([self.vocab['vocab'][ph] for ph in ph_seq]))
