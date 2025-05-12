@@ -6,12 +6,11 @@ import click
 import lightning as pl
 import torch
 import yaml
-from lightning.pytorch.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
 
 from networks.task.forced_alignment import LitForcedAlignmentTask
 from tools.dataset import MixedDataset, WeightedBinningAudioBatchSampler, collate_fn
-from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback
+from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback, MonitorCheckpointsCallback
 
 
 @click.command()
@@ -122,20 +121,18 @@ def main(config: str, pretrained_model_path, resume):
     )
 
     recent_checkpoints_callback = RecentCheckpointsCallback(
-        save_path=save_model_folder,
+        dirpath=save_model_folder,
         save_top_k=config["save_top_k"],
         save_every_steps=config["save_every_steps"],
     )
 
     stepProgressBar = StepProgressBar()
 
-    evaluate_checkpoint = ModelCheckpoint(
+    evaluate_checkpoint = MonitorCheckpointsCallback(
         dirpath=save_model_folder,
         monitor="unseen_evaluate/total",
         mode="min",
-        save_top_k=6,
-        filename="best-step={step}-evaluate={unseen_evaluate/total:.5f}",
-        auto_insert_metric_name=False
+        save_top_k=5,
     )
 
     # trainer
