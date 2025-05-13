@@ -177,9 +177,10 @@ class AlignmentDecoder:
 
     @staticmethod
     @numba.jit
-    def forward_pass(T, S, prob_log, not_edge_prob_log, edge_prob_log, curr_ph_max_prob_log, dp, backtrack_s,
-                     ph_seq_id,
-                     prob3_pad_len):
+    def forward_pass(T, S, prob_log, edge_prob, curr_ph_max_prob_log, dp, ph_seq_id, prob3_pad_len=1):
+        backtrack_s = np.full_like(dp, -1, dtype="int32")
+        edge_prob_log = np.log(edge_prob + 1e-6).astype("float32")
+        not_edge_prob_log = np.log(1 - edge_prob + 1e-6).astype("float32")
         for t in range(1, T):
             # [t-1,s] -> [t,s]
             prob1 = dp[t - 1, :] + prob_log[t, :] + not_edge_prob_log[t]
@@ -243,16 +244,11 @@ class AlignmentDecoder:
         # edge_prob: (T,2)
         T = ph_prob_log.shape[0]
         S = len(ph_seq_id)
-        # not_SP_num = (ph_seq_id > 0).sum()
         prob_log = ph_prob_log[:, ph_seq_id]
-
-        edge_prob_log = np.log(edge_prob + 1e-6).astype("float32")
-        not_edge_prob_log = np.log(1 - edge_prob + 1e-6).astype("float32")
 
         # init
         curr_ph_max_prob_log = np.full(S, -np.inf)
         dp = np.full((T, S), -np.inf, dtype="float32")  # (T, S)
-        backtrack_s = np.full_like(dp, -1, dtype="int32")
 
         # 如果mode==forced，只能从SP开始或者从第一个音素开始
         dp[0, 0] = prob_log[0, 0]
@@ -262,10 +258,8 @@ class AlignmentDecoder:
             curr_ph_max_prob_log[1] = prob_log[0, 1]
 
         # forward
-        prob3_pad_len = 1
         dp, backtrack_s, curr_ph_max_prob_log = self.forward_pass(
-            T, S, prob_log, not_edge_prob_log, edge_prob_log, curr_ph_max_prob_log, dp, backtrack_s, ph_seq_id,
-            prob3_pad_len
+            T, S, prob_log, edge_prob, curr_ph_max_prob_log, dp, ph_seq_id
         )
 
         # backward
@@ -296,7 +290,7 @@ class AlignmentDecoder:
         )
 
         return (
-            np.array(ph_idx_seq),
-            np.array(ph_time_int),
-            np.array(frame_confidence),
+            np.array(ph_idx_seq, dtype="int32"),
+            np.array(ph_time_int, dtype="int32"),
+            np.array(frame_confidence, dtype="float32"),
         )
