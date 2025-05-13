@@ -14,62 +14,62 @@ def plot_for_valid(
 ):
     ph_seq = [i.split("/")[-1] for i in ph_seq]
     x = np.arange(melspec.shape[-1])
-
     fig, (ax1, ax2) = plt.subplots(2)
-    ax1.imshow(melspec[0], origin="lower", aspect="auto")
+
+    ax1.imshow(melspec[0], origin="lower", aspect="auto", zorder=0)
+
+    y_max = melspec.shape[-2]
+    ax1.set_ylim(0, y_max)
 
     draw_upper_blue = ph_time_gt is not None
+    red_upper, red_full = [], []
 
     for i, interval in enumerate(ph_intervals):
         if i == 0 or (i > 0 and ph_intervals[i - 1][1] != interval[0]):
-            if interval[0] > 0:
+            if 0 < interval[0] < melspec.shape[-1]:
                 if draw_upper_blue:
-                    ax1.axvline(interval[0], color="r", linewidth=1, ymin=0.5, ymax=1.0)
+                    red_upper.append(interval[0])
                 else:
-                    ax1.axvline(interval[0], color="r", linewidth=1)
-
-        if interval[1] < melspec.shape[-1]:
+                    red_full.append(interval[0])
+        if 0 <= interval[1] < melspec.shape[-1]:
             if draw_upper_blue:
-                ax1.axvline(interval[1], color="r", linewidth=1, ymin=0.5, ymax=1.0)
+                red_upper.append(interval[1])
             else:
-                ax1.axvline(interval[1], color="r", linewidth=1)
-        if ph_seq[i] != "SP":
-            if i % 2:
-                ax1.text(
-                    (interval[0] + interval[1]) / 2
-                    - len(ph_seq[i]) * melspec.shape[-1] / 275,
-                    melspec.shape[-2] + 1,
-                    ph_seq[i],
-                    fontsize=11,
-                    color="black",
-                )
-            else:
-                ax1.text(
-                    (interval[0] + interval[1]) / 2
-                    - len(ph_seq[i]) * melspec.shape[-1] / 275,
-                    melspec.shape[-2] - 6,
-                    ph_seq[i],
-                    fontsize=11,
-                    color="white",
-                )
+                red_full.append(interval[1])
+
+    if red_upper:
+        ax1.vlines(red_upper, ymin=0.5 * y_max, ymax=y_max, colors='r', linewidth=1, zorder=2)
+    if red_full:
+        ax1.vlines(red_full, ymin=0, ymax=y_max, colors='r', linewidth=1, zorder=2)
+
+    for i, interval in enumerate(ph_intervals):
+        if ph_seq[i] == "SP":
+            continue
+        y_offset = len(ph_seq[i]) * melspec.shape[-1] / 275
+        x_center = (interval[0] + interval[1]) / 2
+        ax1.text(
+            x_center - y_offset,
+            y_max + 1 if i % 2 else y_max - 6,
+            ph_seq[i],
+            fontsize=11,
+            color="black" if i % 2 else "white",
+            verticalalignment='bottom' if i % 2 else 'top',
+            zorder=1
+        )
 
     if draw_upper_blue:
-        for time in ph_time_gt:
-            if 0 <= time < melspec.shape[-1]:
-                ax1.axvline(time, color="b", linewidth=1, ymax=0.5)
+        valid_times = [t for t in ph_time_gt if 0 <= t < melspec.shape[-1]]
+        ax1.vlines(valid_times, ymin=0, ymax=0.5 * y_max, colors='b', linewidth=1, zorder=2)
 
-    ax1.plot(
-        x, frame_confidence * melspec.shape[-2], color="black", linewidth=1, alpha=0.6, label='_nolegend_'
-    )
-    ax1.fill_between(x, frame_confidence * melspec.shape[-2], color="black", alpha=0.3, label='_nolegend_')
-
-    legend_elements = [
-        plt.Line2D([0], [0], color='r', lw=2, label='pred'),
-        plt.Line2D([0], [0], color='b', lw=2, label='gt')
-    ]
+    y_scale = y_max
+    ax1.plot(x, frame_confidence * y_scale, 'k-', lw=1, alpha=0.6, zorder=3)
+    ax1.fill_between(x, frame_confidence * y_scale, color='k', alpha=0.3, zorder=3)
 
     ax1.legend(
-        handles=legend_elements,
+        handles=[
+            plt.Line2D([], [], color='r', lw=2, label='pred'),
+            plt.Line2D([], [], color='b', lw=2, label='gt')
+        ],
         loc='upper right',
         fontsize=10,
         framealpha=0.9,
@@ -81,18 +81,13 @@ def plot_for_valid(
         origin="lower",
         aspect="auto",
         interpolation="nearest",
-        # vmin=0,
-        # vmax=1,
+        extent=[0, x[-1], 0, ph_frame_prob.shape[1]]
     )
-
-    ax2.plot(x, ph_frame_id_gt, color="red", linewidth=1.5)
-    # ax2.scatter(x, ph_frame_id_gt, s=5, marker='s', color="red")
-
-    ax2.plot(x, edge_prob * ph_frame_prob.shape[-1], color="black", linewidth=1)
-    ax2.fill_between(x, edge_prob * ph_frame_prob.shape[-1], color="black", alpha=0.3)
+    ax2.plot(x, ph_frame_id_gt, 'r-', lw=1.5, zorder=2)
+    edge_scale = ph_frame_prob.shape[-1]
+    ax2.plot(x, edge_prob * edge_scale, 'k-', lw=1, zorder=2)
+    ax2.fill_between(x, edge_prob * edge_scale, color='k', alpha=0.3, zorder=1)
 
     fig.set_size_inches(13, 7)
-    plt.subplots_adjust(hspace=0)
-    plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-
+    plt.subplots_adjust(hspace=0, left=0.05, right=0.95, top=0.95, bottom=0.05)
     return fig
