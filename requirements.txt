@@ -1,7 +1,6 @@
 # It is recommended to install torch and torchaudio manually.
 
 click
-einops==0.8.1
 h5py
 librosa<0.10.0
 lightning>=2.0.0
@@ -18,4 +17,3 @@ numba
 # torch
 # torchaudio
 pandas~=2.0.3
-openai-whisper

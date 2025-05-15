@@ -4,7 +4,7 @@ from networks.layer.scaling.base import BaseDowmSampling, BaseUpSampling
 
 
 class DownSampling(BaseDowmSampling):
-    def __init__(self, input_dims, output_dims, down_sampling_factor=2):
+    def __init__(self, input_dims: int, output_dims: int, down_sampling_factor: int = 2):
         super(DownSampling, self).__init__(
             input_dims, output_dims, down_sampling_factor=2
         )
@@ -29,7 +29,7 @@ class DownSampling(BaseDowmSampling):
 
 
 class UpSampling(BaseUpSampling):
-    def __init__(self, input_dims, output_dims, up_sampling_factor=2):
+    def __init__(self, input_dims: int, output_dims: int, up_sampling_factor: int = 2):
         super(UpSampling, self).__init__(input_dims, output_dims, up_sampling_factor=2)
 
         self.input_dims = input_dims

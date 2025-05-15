@@ -2,16 +2,14 @@ import torch
 import torch.nn.functional as F
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from torchaudio.transforms import Resample
-from transformers import Wav2Vec2FeatureExtractor, HubertModel, WavLMModel
-from whisper.audio import log_mel_spectrogram, pad_or_trim
-from whisper.model import ModelDimensions, Whisper
+from transformers import Wav2Vec2FeatureExtractor, HubertModel
 
 from networks.hubert.model import HubertSoft
 from tools.get_melspec import MelSpecExtractor
 
 
 class UnitsEncoder(torch.nn.Module):
-    def __init__(self, hubert_config, mel_config, device=None):
+    def __init__(self, hubert_config: dict, mel_config: dict, device=None):
         super().__init__()
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -31,13 +29,10 @@ class UnitsEncoder(torch.nn.Module):
         if self.encoder == 'cnhubert':
             self.model = Audio2CNHubert(encoder_ckpt, device=device)
             is_loaded_encoder = True
-        if self.encoder == 'wavlm':
-            self.model = Audio2WavLM(encoder_ckpt, device=device)
+        if self.encoder == 'cnhubertTTA2X':
+            self.model = Audio2CNHubertTTA2X(encoder_ckpt, device=device)
             is_loaded_encoder = True
-        if self.encoder == 'whisper-ppg':
-            self.model = Audio2Whisper(encoder_ckpt, device=device)
-            is_loaded_encoder = True
-        if self.encoder == 'hubertsofttta2x':
+        if self.encoder == 'hubertsoftTTA2X':
             self.model = Audio2HubertSoftTTA2X(encoder_ckpt, device=device)
             is_loaded_encoder = True
         assert is_loaded_encoder, f" [x] Unknown units encoder: {self.encoder}"
@@ -76,7 +71,7 @@ class UnitsEncoder(torch.nn.Module):
 
 
 class Audio2HubertSoft(torch.nn.Module):
-    def __init__(self, path, device='cpu', h_sample_rate=16000, h_hop_size=320):
+    def __init__(self, path, device='cpu'):
         super().__init__()
         print(' [Encoder Model] HuBERT Soft')
         self.hubert = HubertSoft().to(device)
@@ -94,7 +89,7 @@ class Audio2HubertSoft(torch.nn.Module):
 
 
 class Audio2CNHubert(torch.nn.Module):
-    def __init__(self, path, device='cpu', h_sample_rate=16000, h_hop_size=320):
+    def __init__(self, path, device='cpu'):
         super().__init__()
         print(' [Encoder Model] Chinese Hubert')
         print(' [Loading] ' + path)
@@ -111,53 +106,39 @@ class Audio2CNHubert(torch.nn.Module):
             return self.model(input_values)["last_hidden_state"]  # [1, T, C]
 
 
-class Audio2WavLM(torch.nn.Module):
+class Audio2CNHubertTTA2X(torch.nn.Module):
     def __init__(self, path, device='cpu'):
         super().__init__()
-        print(f' [Encoder Model] WavLM Speaker Verification')
-        print(f' [Loading] {path}')
-
-        self.model = WavLMModel.from_pretrained(path, local_files_only=True).to(device)
-        self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(path)
-
-        self.model.eval()
-        self.device = device
-
-    def forward(self, audio):  # 输入形状: [batch_size, samples]
-        with torch.no_grad():
-            input_values = self.feature_extractor(audio.squeeze(0), sampling_rate=16000, return_tensors="pt",
-                                                  padding=True).input_values.to(self.device)
-            return self.model(input_values)["last_hidden_state"]  # [1, T, C]
-
-
-class Audio2Whisper(torch.nn.Module):
-    def __init__(self, path, device='cpu', h_sample_rate=16000, h_hop_size=320):
-        super().__init__()
-        print(' [Encoder Model] Whisper')
+        print(' [Encoder Model] Chinese Hubert')
         print(' [Loading] ' + path)
-
-        self.dev = device
-        checkpoint = torch.load(path, map_location=self.dev)
-        dims = ModelDimensions(**checkpoint["dims"])
-        model = Whisper(dims)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        self.hidden_dim = dims
-        self.model = model.to(self.dev)
+        self.model = HubertModel.from_pretrained(path, local_files_only=True).to(device)
+        self.model.eval()
+        self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+            path, local_files_only=True)
 
     def forward(self,
                 audio):  # B, T
-        audln = audio.shape[1]
-        ppgln = audln // 320
-        audio = pad_or_trim(audio)
-        mel = log_mel_spectrogram(audio).to(self.dev)
-        with torch.no_grad():
-            ppg = self.model.encoder(mel).squeeze().data.cpu().float().numpy()
-            ppg = torch.FloatTensor(ppg[:ppgln, ]).to(self.dev)
-            return ppg[None, :, :]  # [1, T, C]
+        with torch.inference_mode():
+            input_values = self.feature_extractor(audio, return_tensors="pt",
+                                                  sampling_rate=16000).input_values.to(audio.device).squeeze(1)
+            feats = self.model(input_values)["last_hidden_state"]
+            padded_audio = F.pad(audio, (160, 0))  # [B, T + pad_amount]
+            input_values2 = self.feature_extractor(padded_audio, return_tensors="pt",
+                                                   sampling_rate=16000).input_values.to(audio.device).squeeze(1)
+            feats2 = self.model(input_values2)["last_hidden_state"]
+            n = feats2.shape[1] - feats.shape[1]
+            if n > 0:
+                feats = F.pad(feats, (0, 0, 0, 1))
+            feats_tta = torch.cat((feats2, feats), dim=2).reshape(feats.shape[0], -1, feats.shape[-1])
+            feats_tta = feats_tta[:, 1:, :]
+            if n > 0:
+                feats_tta = feats_tta[:, :-1, :]
+        units = feats_tta  # .transpose(2, 1)
+        return units  # [1, T, B]
 
 
 class Audio2HubertSoftTTA2X:
-    def __init__(self, path, h_sample_rate=16000, h_hop_size=320, device='cpu'):
+    def __init__(self, path, device='cpu'):
         self.device = device
         print(' [Encoder Model] Hubert Soft with TTA 2X')
         print(' [Loading] ' + path)

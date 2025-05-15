@@ -1,5 +1,3 @@
-from typing import Any
-
 import lightning as pl
 import textgrid
 import torch
@@ -22,21 +20,21 @@ from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, Vlabeler
 class LitForcedAlignmentTask(pl.LightningModule):
     def __init__(
             self,
-            vocab,
-            model_config,
-            hubert_config,
-            melspec_config,
-            optimizer_config,
-            loss_config,
-            config
+            vocab: dict,
+            model_config: dict,
+            hubert_config: dict,
+            melspec_config: dict,
+            optimizer_config: dict,
+            loss_config: dict,
+            config: dict,
     ):
         super().__init__()
         self.save_hyperparameters()
 
-        self.vocab = vocab
-        self.silent_phonemes = self.vocab["silent_phonemes"]
-        self.global_phonemes = self.vocab["global_phonemes"]
-        self.ignored_phones = self.silent_phonemes + self.global_phonemes
+        self.vocab: dict = vocab
+        self.silent_phonemes: list = self.vocab["silent_phonemes"]
+        self.global_phonemes: list = self.vocab["global_phonemes"]
+        self.ignored_phones: list = self.silent_phonemes + self.global_phonemes
 
         self.backbone = UNetBackbone(
             input_dims=hubert_config["channel"],
@@ -272,7 +270,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def forward(self,
                 x,  # [B, T, C]
-                ) -> Any:
+                ):
         h = self.backbone(x)
         logits = self.head(h)  # [B, T, <vocab_size> + 2]
         ph_frame_logits = logits[:, :, 2:]  # [B, T, <vocab_size>]
@@ -457,7 +455,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         val_loss = self._get_evaluate_loss(self.validation_step_outputs.get(f"tiers-2", []))
         for metric_name, metric_value in val_loss.items():
-            self.log_dict({f"vaild_evaluate/{metric_name}": metric_value})
+            self.log_dict({f"valid_evaluate/{metric_name}": metric_value})
         self.validation_step_outputs[f"tiers-2"].clear()
 
         evaluate_loss = self._get_evaluate_loss(self.validation_step_outputs.get(f"tiers-3", []))

@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class ResidualBasicBlock(nn.Module):
-    def __init__(self, input_dims, output_dims, hidden_dims=None, n_groups=16):
+    def __init__(self, input_dims: int, output_dims: int, hidden_dims: int = None, n_groups: int = 16):
         super(ResidualBasicBlock, self).__init__()
 
         self.input_dims = input_dims
@@ -51,7 +51,7 @@ class ResidualBasicBlock(nn.Module):
 
 
 class ResidualBottleNeckBlock(nn.Module):
-    def __init__(self, input_dims, output_dims, hidden_dims=None, n_groups=16):
+    def __init__(self, input_dims: int, output_dims: int, hidden_dims: int = None, n_groups: int = 16):
         super(ResidualBottleNeckBlock, self).__init__()
 
         self.input_dims = input_dims
