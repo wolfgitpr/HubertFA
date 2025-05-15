@@ -1,18 +1,14 @@
-# HubertFA: Hubert-based Forced Aligner
+# HubertFA: 基于Hubert的强制对齐工具
 
 ![example](example.png)
 
-# 介绍
+## 简介
 
-预发布版，分发模型仅建议使用mel输入的onnx，不保证hubert版onnx及ckpt的长期兼容性。
+专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。基于[SOFA](https://github.com/qiuqiao/SOFA)优化，支持多种音频编码器。
 
-参考[SOFA](https://github.com/qiuqiao/SOFA)设计，更轻量化。
-
-HubertFA是一个专为歌声设计的强制对齐器，同时也兼容非歌声的对齐。
+⚠️ **预发布版**：当前分发模型仅推荐使用`mel`编码的ONNX版本，Hubert相关模型可能存在兼容性问题。
 
 [模型分享说明](https://github.com/wolfgitpr/HubertFA/discussions/2)
-
-# 使用方法
 
 ## 可选输入编码
 
@@ -28,41 +24,36 @@ HubertFA是一个专为歌声设计的强制对齐器，同时也兼容非歌声
 |        channel        |  128(同n_mels)   |                                              256                                               |                                  768                                   |
 |      model_path       |        无        |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
 
+## 快速开始
 
-## 环境配置
+### 环境配置
 
-1. 使用`git clone`下载本仓库的代码，根据encoder表下载依赖模型，onnx通常在发布的压缩包内。
-2. 安装conda
-3. 创建conda环境，python版本的要求为`3.10`
-    ```bash
-    conda create -n HFA python=3.10 -y
-    conda activate HFA
-    ```
-4. 去[pytorch官网](https://pytorch.org/get-started/locally/)安装torch
-5. 安装其他python库
+1. 克隆仓库并安装依赖：
+   ```bash
+   git clone https://github.com/your-repo/HubertFA.git
+   conda create -n HFA python=3.10 -y
+   conda activate HFA
+2. 去[pytorch官网](https://pytorch.org/get-started/locally/)安装torch
+3. 安装其他python库
     ```bash
     pip install -r requirements.txt
     ```
 
-## 推理
+### 推理
 
 1. 下载模型文件。你可以在本仓库[discussion](https://github.com/wolfgitpr/HubertFA/discussions)中找到onnx模型。
 2. --language指定语种(zh ja en yue)，--dictionary指定词典。默认字典为`opencpop-extension.txt`
 3. 准备需要强制对齐的数据，放入一个文件夹中（默认放在`/segments`文件夹），格式如下
-    ```text
-    - segments
-        - singer1
-            - segment1.lab
-            - segment1.wav
-            - ...
-        - singer2
-            - segment1.lab
-            - segment1.wav
-            - ...
-    ```
-   保证`.wav`文件和对应的`.lab`在同一个文件夹即可。
 
-   其中，`.lab`文件是同名`.wav`文件的录音文本。录音文本的文件后缀名可以通过`--in_format`参数更改。
+   segments/
+   ├── singer1/
+   │   ├── audio1.wav
+   │   ├── audio1.lab  # 录音文本（拼音/音素，空格隔开）
+   └── singer2/
+       ├── audio2.wav
+       └── audio2.lab
+
+   保证`.wav`文件和对应的`.lab`在同一个文件夹即可。
 
    录音文本经过`g2p`模块转化为音素序列后，输入模型进行对齐。
 
@@ -90,41 +81,28 @@ HubertFA是一个专为歌声设计的强制对齐器，同时也兼容非歌声
 
    最终的标注保存在文件夹中，文件夹的名称是你选择的标注格式，这个文件夹的位置和推理所用的wav文件处于同一个文件夹中。
 
-### 高级功能
+## 高级功能
 
 - 使用自定义的g2p，而不是使用词典
     - 参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)
 
-## 训练
+### 训练
 
 1. 参照上文进行环境配置。
 
    把训练数据按以下格式放入`data`文件夹(也可按个人习惯)：
 
-    ```
-    - data
-        - full_label
-            - singer1
-                - wavs
-                    - audio1.wav
-                    - audio2.wav
-                    - ...
-                - transcriptions.csv
-            - singer2
-                - wavs
-                    - ...
-                - transcriptions.csv
-        - weak_label
-            - singer3
-                - wavs
-                    - ...
-                - transcriptions.csv
-            - ...
-        - no_label
-            - audio1.wav
-            - audio2.wav
-            - ...
-    ```
+   data/
+   ├── full_label/  # 完整标注
+   │   └── singer/
+   │       ├── wavs/*.wav
+   │       └── transcriptions.csv  # 需含`ph_seq`和`ph_dur`列
+   ├── weak_label/  # 弱标注（无时长） 
+   │   └── singer/
+   │       ├── wavs/*.wav
+   │       └── transcriptions.csv  # 需含`ph_seq`列
+   └── no_label/    # 无标注，仅wav
+   
    关于`transcriptions.csv`的格式，参见：https://github.com/qiuqiao/SOFA/discussions/5
 
    其中：
@@ -135,9 +113,18 @@ HubertFA是一个专为歌声设计的强制对齐器，同时也兼容非歌声
 
 2. 修改配置（参考文件内注释）。
 
+   使用 `make_data_config.py` 自动扫描数据文件夹生成配置文件：
+
+   ```bash
+   python make_data_config.py \
+     --data_folder data/full_label \  # 数据集根目录
+     --language zh \                 # 指定语言标识（zh/ja/en等）
+     --output configs/datasets_zh.yaml  # 指定输出文件名（可选）
+   ```
+
    [数据集配置](configs/datasets_config.yaml)
 
-   [预处理配置](configs/binarize_config.yaml)，datasets_config: configs/datasets_config.yaml
+   [预处理配置](configs/binarize_config.yaml)，[datasets_config](configs/datasets_config.yaml)
 
    [训练配置](configs/train_config.yaml)
 
