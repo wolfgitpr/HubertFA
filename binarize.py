@@ -463,10 +463,15 @@ def load_yaml(yaml_path):
 def binarize(config: str):
     config = load_yaml(config)
 
-    datasets_config = pathlib.Path(config["datasets_config"])
-    assert datasets_config.exists(), f"{datasets_config} does not exist."
+    datasets_config = config["datasets_config"]
+    assert isinstance(datasets_config, list), f"{datasets_config} is not a list."
 
-    config.update(**load_yaml(datasets_config))
+    datasets = {}
+    for dataset_path in datasets_config:
+        if os.path.exists(dataset_path):
+            datasets.update(**load_yaml(dataset_path))
+
+    config.update(**datasets)
 
     global_config = {
         "max_length": config["max_length"],

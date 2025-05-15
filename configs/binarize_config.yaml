@@ -1,17 +1,38 @@
-datasets_config: configs/datasets_config.yaml
+# word /tab phoneme_1 /空格 phoneme_2 ...
+dictionaries:
+  zh: dictionaries/opencpop-extension.txt
+  ja: dictionaries/japanese_dict_full.txt
+#  en: dictionaries/ds_cmudict-07b.txt
+#  yue: dictionaries/jyutping_dict.txt
 
-binary_folder: data/binary_base_mel
+datasets_config: # 数据集
+  - configs/datasets_config.yaml
 
-# 预处理线程数和暂存队列大小，数据量过少（5h以内）、内存低于16g、显存低于8g不建议开启。
-multiprocess_works: 0
-# size * num_works，过大需保证内存足够
-multiprocess_max_size: 200
-# 最小启动数据量
-multiprocess_start_size: 100
+binary_folder: data/binary_base_mel # 预处理结果文件夹
 
-# valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
-valid_set_size: 0
+multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、4-6g显存可开1个worker。
+multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
+multiprocess_start_size: 100  # 最小启动数据量
+
+valid_set_size: 0 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
 max_length: 45 # 单条音频最大时长
+
+# 暂未启用
+extra_phonemes: [ ]
+
+# 公共音素（各语种通用）
+global_phonemes:
+  - AP
+  - EP
+  - GS
+
+# 无声音素
+silent_phonemes:
+  - SP
+  - <SP>
+  - ''
+  - pau
+  - cl
 
 # 参照readme表格配置, mel使用melspec_config和hubert_config的channel(与n_mels一致)
 hubert_config:
@@ -21,6 +42,7 @@ hubert_config:
   hop_size: 320
   channel: 128
 
+# 一般情况不用改
 melspec_config:
   n_mels: 128
   sample_rate: 44100
@@ -30,3 +52,34 @@ melspec_config:
   fmin: 40
   fmax: 16000
   clamp: 0.00001
+
+# 不建议开启
+merged_phoneme: False
+# merge phonemes
+merged_phoneme_groups:
+  - - zh/f
+    - en/f
+  - - zh/m
+    - en/m
+    - ja/m
+  - - zh/w
+    - en/w
+    - ja/w
+  - - zh/s
+    - en/s
+    - ja/s
+  - - zh/n
+    - en/n
+    - ja/n
+  - - zh/c
+    - ja/ts
+  - - zh/y
+    - en/y
+    - ja/y
+  - - zh/l
+    - en/l
+  - - zh/x
+    - ja/sh
+  - - ja/z
+    - en/z
+
