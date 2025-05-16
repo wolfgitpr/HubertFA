@@ -254,7 +254,7 @@ def collate_fn(batch):
             input_feature, ph_seq, ph_edge, ph_frame, ph_mask, label_type, melspec.
 
     Returns:
-        input_feature: (B C T)
+        input_feature: (B T C)
         input_feature_lengths: (B)
         ph_seq: (B S)
         ph_seq_lengths: (B)
@@ -265,7 +265,7 @@ def collate_fn(batch):
         melspec: (B T)
     """
     # Calculate maximum lengths for padding
-    input_feature_lengths = torch.tensor([item[0].shape[-1] for item in batch])
+    input_feature_lengths = torch.tensor([item[0].shape[-2] for item in batch])
     max_len = input_feature_lengths.max().item()
     ph_seq_lengths = torch.tensor([len(item[1]) for item in batch])
     max_ph_seq_len = ph_seq_lengths.max().item()
@@ -275,7 +275,7 @@ def collate_fn(batch):
         # Pad each element in the sample
         input_feature = torch.nn.functional.pad(
             torch.as_tensor(item[0]),
-            (0, max_len - item[0].shape[-1]),
+            (0, 0, 0, max_len - item[0].shape[-2], 0, 0),
             mode='constant',
             value=0
         )

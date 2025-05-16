@@ -141,14 +141,14 @@ class LitForcedAlignmentTask(pl.LightningModule):
         waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
         wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
         input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
-                                                  self.melspec_config["hop_length"])  # [B,C,T]
+                                                  self.melspec_config["hop_length"])  # [B, T, C]
 
         with torch.no_grad():
             (
                 ph_frame_logits,  # (B, T, vocab_size)
                 ph_edge_logits,  # (B, T)
                 ctc_logits,  # (B, T, vocab_size)
-            ) = self.forward(input_feature.transpose(1, 2))
+            ) = self.forward(input_feature)
 
         (
             ph_seq,
@@ -301,7 +301,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_frame_logits,  # (B, T, vocab_size)
                 ph_edge_logits,  # (B, T)
                 ctc_logits,  # (B, T, vocab_size)
-            ) = self.forward(input_feature.transpose(1, 2))
+            ) = self.forward(input_feature)
 
             losses = self._get_loss(
                 ph_frame_logits,
@@ -390,7 +390,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_frame_logits,  # (B, T, vocab_size)
             ph_edge_logits,  # (B, T)
             ctc_logits,  # (B, T, vocab_size)
-        ) = self.forward(input_feature.transpose(1, 2))
+        ) = self.forward(input_feature)
 
         ph_seq_g2p = []
         last_ph = ""

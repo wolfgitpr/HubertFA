@@ -344,10 +344,10 @@ class ForcedAlignmentBinarizer:
                 return None
 
             # units encode
-            units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, C, T]
+            units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, T, C]
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
-            B, C, T = units.shape
+            B, T, C = units.shape
             assert C == self.hubert_channel, f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
 
             label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]

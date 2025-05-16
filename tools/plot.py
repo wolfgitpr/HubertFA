@@ -13,7 +13,8 @@ def plot_for_valid(
         ph_time_gt=None
 ):
     ph_seq = [i.split("/")[-1] for i in ph_seq]
-    x = np.arange(melspec.shape[-1])
+    T = melspec.shape[-1]
+    x = np.arange(T)
     fig, (ax1, ax2) = plt.subplots(2)
 
     ax1.imshow(melspec[0], origin="lower", aspect="auto", zorder=0)
@@ -26,12 +27,12 @@ def plot_for_valid(
 
     for i, interval in enumerate(ph_intervals):
         if i == 0 or (i > 0 and ph_intervals[i - 1][1] != interval[0]):
-            if 0 < interval[0] < melspec.shape[-1]:
+            if 0 < interval[0] < T:
                 if draw_upper_blue:
                     red_upper.append(interval[0])
                 else:
                     red_full.append(interval[0])
-        if 0 <= interval[1] < melspec.shape[-1]:
+        if 0 <= interval[1] < T:
             if draw_upper_blue:
                 red_upper.append(interval[1])
             else:
@@ -45,7 +46,7 @@ def plot_for_valid(
     for i, interval in enumerate(ph_intervals):
         if ph_seq[i] == "SP":
             continue
-        y_offset = len(ph_seq[i]) * melspec.shape[-1] / 275
+        y_offset = len(ph_seq[i]) * T / 275
         x_center = (interval[0] + interval[1]) / 2
         ax1.text(
             x_center - y_offset,
@@ -58,7 +59,7 @@ def plot_for_valid(
         )
 
     if draw_upper_blue:
-        valid_times = [t for t in ph_time_gt if 0 <= t < melspec.shape[-1]]
+        valid_times = [t for t in ph_time_gt if 0 <= t < T]
         ax1.vlines(valid_times, ymin=0, ymax=0.5 * y_max, colors='b', linewidth=1, zorder=2)
 
     y_scale = y_max

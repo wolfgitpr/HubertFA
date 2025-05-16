@@ -67,7 +67,7 @@ class UnitsEncoder(torch.nn.Module):
         ratio = (hop_size / sample_rate) / (self.encoder_hop_size / self.encoder_sample_rate)
         index = torch.clamp(torch.round(ratio * torch.arange(n_frames).to(self.device)).long(), max=units.size(1) - 1)
         units_aligned = torch.gather(units, 1, index.unsqueeze(0).unsqueeze(-1).repeat([1, 1, units.size(-1)]))
-        return units_aligned.transpose(1, 2)  # [B, C, T]
+        return units_aligned  # [B, T, C]
 
 
 class Audio2HubertSoft(torch.nn.Module):
