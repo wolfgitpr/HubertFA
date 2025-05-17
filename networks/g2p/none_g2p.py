@@ -10,23 +10,23 @@ class NoneG2P(BaseG2P):
     def _g2p(self, input_text):
         input_seq = input_text.strip().split(" ")
 
-        ph_seq = ["SP"]
+        _ph_seq = ["SP"]
         for i, ph in enumerate(input_seq):
-            if ph == "SP" and ph_seq[-1] == "SP":
+            if ph == "SP" and _ph_seq[-1] == "SP":
                 continue
-            ph_seq.append(ph)
-        if ph_seq[-1] != "SP":
-            ph_seq.append("SP")
+            _ph_seq.append(ph)
+        if _ph_seq[-1] != "SP":
+            _ph_seq.append("SP")
 
-        word_seq = ph_seq
-        ph_idx_to_word_idx = np.arange(len(ph_seq))
+        _word_seq = _ph_seq
+        _ph_idx_to_word_idx = np.arange(len(_ph_seq))
 
-        return ph_seq, word_seq, ph_idx_to_word_idx
+        return _ph_seq, _word_seq, _ph_idx_to_word_idx
 
 
 if __name__ == "__main__":
     pass
-    grapheme_to_phoneme = NoneG2P()
+    grapheme_to_phoneme = NoneG2P(**{"language": "zh"})
     text = "wo shi SP yi ge xue sheng"
     ph_seq, word_seq, ph_idx_to_word_idx = grapheme_to_phoneme(text)
     print(ph_seq)

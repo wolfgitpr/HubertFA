@@ -9,6 +9,7 @@ import torch
 import yaml
 from tqdm import tqdm
 
+from tools.config_utils import load_yaml
 from tools.dataset import IndexedDatasetBuilder
 from tools.encoder import UnitsEncoder
 from tools.get_melspec import MelSpecExtractor
@@ -443,12 +444,6 @@ class ForcedAlignmentBinarizer:
         meta_data_df = meta_data_df.sort_values(by="label_type").reset_index(drop=True)
 
         return meta_data_df
-
-
-def load_yaml(yaml_path):
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-    return config
 
 
 @click.command()

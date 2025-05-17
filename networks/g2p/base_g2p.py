@@ -41,9 +41,6 @@ class BaseG2P:
         )
         return ph_seq, word_seq, ph_idx_to_word_idx
 
-    def set_in_format(self, in_format):
-        self.in_format = in_format
-
     def get_dataset(self, wav_paths):
         # dataset is a pandas dataframe with columns: wav_path, ph_seq, word_seq, ph_idx_to_word_idx
         dataset = []

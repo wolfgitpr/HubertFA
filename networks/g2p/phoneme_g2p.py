@@ -6,21 +6,21 @@ class PhonemeG2P(BaseG2P):
         super().__init__(**kwargs)
 
     def _g2p(self, input_text):
-        word_seq = input_text.strip().split(" ")
-        word_seq = [ph for ph in word_seq if ph != "SP"]
-        ph_seq = ["SP"]
-        ph_idx_to_word_idx = [-1]
-        for word_idx, word in enumerate(word_seq):
-            ph_seq.append(word)
-            ph_idx_to_word_idx.append(word_idx)
-            ph_seq.append("SP")
-            ph_idx_to_word_idx.append(-1)
-        return ph_seq, word_seq, ph_idx_to_word_idx
+        _word_seq = input_text.strip().split(" ")
+        _word_seq = [ph for ph in _word_seq if ph != "SP"]
+        _ph_seq = ["SP"]
+        _ph_idx_to_word_idx = [-1]
+        for word_idx, word in enumerate(_word_seq):
+            _ph_seq.append(word)
+            _ph_idx_to_word_idx.append(word_idx)
+            _ph_seq.append("SP")
+            _ph_idx_to_word_idx.append(-1)
+        return _ph_seq, _word_seq, _ph_idx_to_word_idx
 
 
 if __name__ == "__main__":
     pass
-    grapheme_to_phoneme = PhonemeG2P()
+    grapheme_to_phoneme = PhonemeG2P(**{"language": "zh"})
     text = "wo shi yi ge xue sheng SP SP SP"
     ph_seq, word_seq, ph_idx_to_word_idx = grapheme_to_phoneme(text)
     print(ph_seq)

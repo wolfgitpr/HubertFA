@@ -14,7 +14,10 @@ from transformers import (
 )
 
 from networks.task.forced_alignment import LitForcedAlignmentTask
+from tools.config_utils import load_yaml
 from tools.get_melspec import MelSpectrogram
+
+ONNX_EXPORT_VERSION = 1
 
 
 def export_mel_encoder(_encoder_path, _melspec_config, device="cpu"):
@@ -62,7 +65,7 @@ class UnitsAligner(torch.nn.Module):
         ratio = (self.hop_size / self.sample_rate) / (self.encoder_hop_size / self.encoder_sample_rate)
         index = torch.clamp(torch.round(ratio * torch.arange(n_frames).to(self.device)).long(), max=units.size(1) - 1)
         units_aligned = torch.gather(units, 1, index.unsqueeze(0).unsqueeze(-1).repeat([1, 1, units.size(-1)]))
-        return units_aligned.transpose(1, 2)  # [B, C, T]
+        return units_aligned  # [B, T, C]
 
 
 class Resampler(torch.nn.Module):
@@ -82,22 +85,22 @@ class Resampler(torch.nn.Module):
 
 
 def change_input_node_name(model, input_names):
-    for i, input in enumerate(model.graph.input):
+    for i, _input in enumerate(model.graph.input):
         input_name = input_names[i]
         for node in model.graph.node:
-            for i, name in enumerate(node.input):
-                if name == input.name:
-                    node.input[i] = input_name
-        input.name = input_name
+            for j, name in enumerate(node.input):
+                if name == _input.name:
+                    node.input[j] = input_name
+        _input.name = input_name
 
 
 def change_output_node_name(model, output_names):
     for i, output in enumerate(model.graph.output):
         output_name = output_names[i]
         for node in model.graph.node:
-            for i, name in enumerate(node.output):
+            for j, name in enumerate(node.output):
                 if name == output.name:
-                    node.output[i] = output_name
+                    node.output[j] = output_name
         output.name = output_name
 
 
@@ -230,30 +233,31 @@ def export_fa_model(_fa_path, ckpt_path, _hubert_config, _melspec_config, device
         with open(pathlib.Path(_fa_path).parent / 'hparams.yaml', 'w') as f:
             yaml.dump(model.hparams, f, default_flow_style=False, allow_unicode=True)
 
+        with open(pathlib.Path(_fa_path).parent / 'VERSION', 'w') as f:
+            f.write(str(ONNX_EXPORT_VERSION))
+
 
 @torch.no_grad()
 @click.command(help='')
 @click.option('--ckpt_path', required=True, metavar='DIR', help='Path to the checkpoint')
-@click.option('--onnx_foler', required=True, metavar='DIR', help='Path to the onnx')
-def export(ckpt_path, onnx_foler):
+@click.option('--onnx_folder', required=True, metavar='DIR', help='Path to the onnx')
+def export(ckpt_path, onnx_folder):
     assert ckpt_path is not None, "Checkpoint directory (ckpt_dir) cannot be None"
 
     ckpt_folder = pathlib.Path(ckpt_path).parent
-    onnx_foler = pathlib.Path(onnx_foler)
+    onnx_folder = pathlib.Path(onnx_folder)
     assert os.path.exists(ckpt_path), f"Checkpoint path does not exist: {ckpt_path}"
     assert os.path.exists(ckpt_folder / "config.yaml"), f"Checkpoint folder does not exist: config.yaml"
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    with open(ckpt_folder / "config.yaml", 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f.read())
+    config = load_yaml(ckpt_folder / "config.yaml")
 
     hubert_config = config["hubert_config"]
     melspec_config = config["melspec_config"]
     encoder_name = hubert_config["encoder"]
 
-    os.makedirs(onnx_foler, exist_ok=True)
-    encoder_path = str(onnx_foler / f"{encoder_name}-{hubert_config['channel']}.onnx")
-    onnx_path = str(onnx_foler / "model.onnx")
+    os.makedirs(onnx_folder, exist_ok=True)
+    encoder_path = str(onnx_folder / f"{encoder_name}-{hubert_config['channel']}.onnx")
+    onnx_path = str(onnx_folder / "model.onnx")
 
     assert hubert_config["encoder"] in ["mel", "cnhubert"], f"{hubert_config['encoder']} must be 'mel'"
     assert not os.path.exists(onnx_path), f"Error: The file '{onnx_path}' already exists."

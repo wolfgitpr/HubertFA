@@ -5,9 +5,8 @@ import textgrid
 
 
 class Exporter:
-    def __init__(self, predictions, log, out_path=None):
+    def __init__(self, predictions, out_path=None):
         self.predictions = predictions
-        self.log = log
         self.out_path = pathlib.Path(out_path) if out_path else None
 
     def save_textgrids(self):
@@ -85,8 +84,3 @@ class Exporter:
 
         if "confidence" in out_formats:
             self.save_confidence_fn()
-
-        if self.log:
-            print("error:")
-            for line in self.log:
-                print(line)

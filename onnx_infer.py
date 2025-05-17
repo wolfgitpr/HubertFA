@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import click
@@ -9,6 +10,7 @@ from tqdm import tqdm
 
 import networks.g2p
 from tools.alignment_decoder import AlignmentDecoder
+from tools.config_utils import check_configs, load_yaml
 from tools.export_tool import Exporter
 from tools.post_processing import post_processing
 
@@ -96,7 +98,7 @@ def create_session(onnx_model_path):
 @click.option(
     "--dictionary",
     "-d",
-    default="dictionary/opencpop-extension.txt",
+    default=None,
     type=str,
     help="(only used when --g2p=='Dictionary') path to the dictionary",
 )
@@ -107,12 +109,23 @@ def infer(onnx_folder,
           **kwargs,
           ):
     onnx_folder = pathlib.Path(onnx_folder)
-    config_file = onnx_folder / 'config.yaml'
-    assert config_file.exists(), f"Config file does not exist: {config_file}"
+    check_configs(onnx_folder)
+
+    if "Dictionary" in g2p:
+        if kwargs["dictionary"] is None:
+            vocab = load_yaml(onnx_folder / "vocab.yaml")
+            dictionary_path = onnx_folder / vocab["dictionaries"].get(kwargs["language"], "")
+            kwargs["dictionary"] = dictionary_path
+        assert os.path.exists(kwargs["dictionary"]), f"{pathlib.Path(kwargs['dictionary']).absolute()} does not exist"
+
+    if not g2p.endswith("G2P"):
+        g2p += "G2P"
+    g2p_class = getattr(networks.g2p, g2p)
+    grapheme_to_phoneme = g2p_class(**kwargs)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    config = load_config_from_yaml(config_file)
+    config = load_config_from_yaml(onnx_folder / 'config.yaml')
     vocab = load_config_from_yaml(onnx_folder / 'vocab.yaml')
 
     hubert_config = config['hubert_config']
@@ -131,19 +144,13 @@ def infer(onnx_folder,
 
     decoder = AlignmentDecoder(vocab, melspec_config)
 
-    if not g2p.endswith("G2P"):
-        g2p += "G2P"
-    g2p_class = getattr(networks.g2p, g2p)
-    grapheme_to_phoneme = g2p_class(**kwargs)
-    out_formats = ['textgrid']
-
-    grapheme_to_phoneme.set_in_format('lab')
     dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
     predictions = []
+    ignored_phonemes = vocab['silent_phonemes'] + vocab['global_phonemes']
 
     for i in tqdm(range(len(dataset)), desc="Processing", unit="it"):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = dataset[i]
-        ph_seq = [f"{language}/{ph}" if ph not in vocab["ignored_phonemes"] else ph for ph in ph_seq]
+        ph_seq = [f"{language}/{ph}" if ph not in ignored_phonemes else ph for ph in ph_seq]
 
         waveform, sr = torchaudio.load(wav_path)
         waveform = waveform[0][None, :][0]
@@ -153,19 +160,15 @@ def infer(onnx_folder,
         wav_length = waveform.shape[0] / melspec_config["sample_rate"]
 
         input_feature = encode(encoder_session, [waveform.cpu().numpy()])[
-            "input_feature"]  # [B,C,T]
-        results = predict(predict_session, input_feature.transpose(0, 2, 1))
+            "input_feature"]  # [B, T, C]
+        results = predict(predict_session, input_feature)
 
         ph_frame_logits = torch.as_tensor(results['ph_frame_logits'], device=device)
         ph_edge_logits = torch.as_tensor(results['ph_edge_logits'], device=device)
         ctc_logits = torch.as_tensor(results['ctc_logits'], device=device)
 
         (
-            ph_seq,
-            ph_intervals,
-            word_seq,
-            word_intervals,
-            confidence
+            ph_seq, ph_intervals, word_seq, word_intervals, confidence
         ) = decoder.decode(
             ph_frame_logits, ph_edge_logits, ctc_logits, wav_length, ph_seq, word_seq, ph_idx_to_word_idx
         )
@@ -181,12 +184,13 @@ def infer(onnx_folder,
                             word_intervals,))
 
     predictions, log = post_processing(predictions)
-    exporter = Exporter(predictions, log)
+    if log:
+        print("error:", "\n".join(log))
 
-    if save_confidence:
-        out_formats.append('confidence')
+    exporter = Exporter(predictions)
+    exporter.export(['textgrid'] if not save_confidence else ['textgrid', 'confidence'])
 
-    exporter.export(out_formats)
+    print("Output files are saved to the same folder as the input wav files.")
 
 
 if __name__ == '__main__':

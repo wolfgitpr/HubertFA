@@ -5,10 +5,10 @@ import shutil
 import click
 import lightning as pl
 import torch
-import yaml
 from torch.utils.data import DataLoader
 
 from networks.task.forced_alignment import LitForcedAlignmentTask
+from tools.config_utils import load_yaml
 from tools.dataset import MixedDataset, WeightedBinningAudioBatchSampler, collate_fn
 from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback, MonitorCheckpointsCallback
 
@@ -43,15 +43,12 @@ def main(config: str, pretrained_model_path, resume):
         "TORCH_CUDNN_V8_API_ENABLED"
     ] = "1"  # Prevent unacceptable slowdowns when using 16 precision
 
-    with open(config, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    config = load_yaml(config)
 
     binary_folder = pathlib.Path(config["binary_folder"])
-    with open(binary_folder / "vocab.yaml", "r", encoding="utf-8") as f:
-        vocab = yaml.safe_load(f)
+    vocab = load_yaml(binary_folder / "vocab.yaml")
 
-    with open(binary_folder / "config.yaml", "r", encoding="utf-8") as f:
-        config_global = yaml.safe_load(f)
+    config_global = load_yaml(binary_folder / "config.yaml")
     config.update(config_global)
 
     save_model_folder = pathlib.Path("ckpt") / config["model_name"]

@@ -1,3 +1,4 @@
+import os
 import pathlib
 
 import click
@@ -5,6 +6,7 @@ import lightning as pl
 import torch
 
 import networks.g2p
+from tools.config_utils import check_configs, load_yaml
 from tools.export_tool import Exporter
 from tools.post_processing import post_processing
 from train import LitForcedAlignmentTask
@@ -43,7 +45,7 @@ from train import LitForcedAlignmentTask
 @click.option(
     "--dictionary",
     "-d",
-    default="dictionary/opencpop-extension.txt",
+    default=None,
     type=str,
     help="(only used when --g2p=='Dictionary') path to the dictionary",
 )
@@ -54,12 +56,20 @@ def main(
         save_confidence,
         **kwargs,
 ):
+    model_dir = pathlib.Path(ckpt).parent
+    check_configs(model_dir)
+
+    if "Dictionary" in g2p:
+        if kwargs["dictionary"] is None:
+            vocab = load_yaml(model_dir / "vocab.yaml")
+            dictionary_path = model_dir / vocab["dictionaries"].get(kwargs["language"], "")
+            kwargs["dictionary"] = dictionary_path
+        assert os.path.exists(kwargs["dictionary"]), f"{pathlib.Path(kwargs['dictionary']).absolute()} does not exist"
+
     if not g2p.endswith("G2P"):
         g2p += "G2P"
     g2p_class = getattr(networks.g2p, g2p)
     grapheme_to_phoneme = g2p_class(**kwargs)
-
-    grapheme_to_phoneme.set_in_format('lab')
     dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
 
     torch.set_grad_enabled(False)
@@ -68,13 +78,11 @@ def main(
     predictions = trainer.predict(model, dataloaders=dataset, return_predictions=True)
 
     predictions, log = post_processing(predictions)
-    exporter = Exporter(predictions, log)
+    if log:
+        print("error:", "\n".join(log))
 
-    out_formats = ['textgrid']
-    if save_confidence:
-        out_formats.append('confidence')
-
-    exporter.export(out_formats)
+    exporter = Exporter(predictions)
+    exporter.export(['textgrid'] if not save_confidence else ['textgrid', 'confidence'])
 
     print("Output files are saved to the same folder as the input wav files.")
 
