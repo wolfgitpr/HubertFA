@@ -1,3 +1,5 @@
+import warnings
+
 import lightning as pl
 import textgrid
 import torch
@@ -7,6 +9,7 @@ import torch.optim.lr_scheduler as lr_scheduler_module
 import networks.scheduler as scheduler_module
 from evaluate import remove_ignored_phonemes
 from networks.layer.backbone.unet import UNetBackbone
+from networks.layer.block.conformer import ConformerBlock
 from networks.layer.block.resnet_block import ResidualBasicBlock
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.BinaryEMDLoss import BinaryEMDLoss
@@ -36,17 +39,35 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.global_phonemes: list = self.vocab["global_phonemes"]
         self.ignored_phones: list = self.silent_phonemes + self.global_phonemes
 
-        self.backbone = UNetBackbone(
-            input_dims=hubert_config["channel"],
-            output_dims=model_config["hidden_dims"],
-            hidden_dims=model_config["hidden_dims"],
-            block=ResidualBasicBlock,
-            down_sampling=DownSampling,
-            up_sampling=UpSampling,
-            down_sampling_factor=model_config["down_sampling_factor"],  # 3
-            down_sampling_times=model_config["down_sampling_times"],  # 7
-            channels_scaleup_factor=model_config["channels_scaleup_factor"],  # 1.5
-        )
+        self.backbone_type = model_config["backbone"]
+
+        if self.backbone_type == 'unet':
+            self.backbone = UNetBackbone(
+                input_dims=hubert_config["channel"],
+                output_dims=model_config["hidden_dims"],
+                hidden_dims=model_config["hidden_dims"],
+                block=ResidualBasicBlock,
+                down_sampling=DownSampling,
+                up_sampling=UpSampling,
+                down_sampling_factor=model_config["down_sampling_factor"],  # 3
+                down_sampling_times=model_config["down_sampling_times"],  # 7
+                channels_scaleup_factor=model_config["channels_scaleup_factor"],  # 1.5
+            )
+        elif self.backbone_type == 'conformer':
+            self.input_proj = nn.Linear(hubert_config["channel"], model_config["hidden_dims"])
+            self.backbone = nn.ModuleList([
+                ConformerBlock(
+                    dim=model_config["hidden_dims"],
+                    heads=config["model"].get("conformer_heads", 4),
+                    ff_expansion=config["model"].get("conformer_ff_expansion", 4),
+                    conv_kernel=config["model"].get("conformer_kernel_size", 31),
+                    dropout=config["model"].get("conformer_dropout", 0.1)
+                )
+                for _ in range(config["model"].get("num_conformer_layers", 2))
+            ])
+        else:
+            warnings.warn(f"{model_config['backbone']} is not supported.")
+
         self.head = nn.Linear(
             model_config["hidden_dims"], self.vocab["vocab_size"] + 2
         )
@@ -271,8 +292,14 @@ class LitForcedAlignmentTask(pl.LightningModule):
     def forward(self,
                 x,  # [B, T, C]
                 ):
-        h = self.backbone(x)
-        logits = self.head(h)  # [B, T, <vocab_size> + 2]
+        if self.backbone_type == 'unet':
+            x = self.backbone(x)
+        if self.backbone_type == 'conformer':
+            x = self.input_proj(x)
+            for layer in self.backbone:
+                x = layer(x)
+
+        logits = self.head(x)  # [B, T, <vocab_size> + 2]
         ph_frame_logits = logits[:, :, 2:]  # [B, T, <vocab_size>]
         ph_edge_logits = logits[:, :, 0]  # [B, T]
         ctc_logits = torch.cat([logits[:, :, [1]], logits[:, :, 3:]], dim=-1)  # [B, T, <vocab_size>]
