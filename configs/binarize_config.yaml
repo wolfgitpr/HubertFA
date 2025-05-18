@@ -37,7 +37,7 @@ silent_phonemes:
 # 参照readme表格配置, mel使用melspec_config和hubert_config的channel(与n_mels一致)
 hubert_config:
   encoder: mel
-  model_path: dependencies/cnhubert # encoder为mel时仅channel有效
+  model_path: dependencies/chinese-hubert-base # encoder为mel时仅channel有效
   sample_rate: 16000
   hop_size: 320
   channel: 128
