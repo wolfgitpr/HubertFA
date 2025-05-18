@@ -357,7 +357,7 @@ class ForcedAlignmentBinarizer:
                 if not _item.ph_id_seq: label_type_id = 0
 
             ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
-                self.vocab, units.shape[-1], label_type_id, _item.ph_id_seq, _item.ph_dur
+                self.vocab, units.shape[-2], label_type_id, _item.ph_id_seq, _item.ph_dur
             )
             if ph_id_seq is None: return None
 
