@@ -46,7 +46,7 @@ class UnitsEncoder(torch.nn.Module):
                 sample_rate,
                 hop_size):
         if self.encoder == "mel":
-            return self.model(audio.squeeze(0))
+            return self.model(audio.squeeze(0)).transpose(1, 2)
         # resample
         if sample_rate == self.encoder_sample_rate:
             audio_res = audio
