@@ -38,6 +38,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.silent_phonemes: list = self.vocab["silent_phonemes"]
         self.global_phonemes: list = self.vocab["global_phonemes"]
         self.ignored_phones: list = self.silent_phonemes + self.global_phonemes
+        self.language_prefix = self.vocab["language_prefix"]
 
         self.backbone_type = model_config["backbone"]
 
@@ -158,7 +159,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = batch
-        ph_seq = [f"{language}/{ph}" if ph not in self.ignored_phones else ph for ph in ph_seq]
+        ph_seq = [f"{language}/{ph}" if ph not in self.ignored_phones and self.language_prefix else ph for ph in
+                  ph_seq]
         waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
         wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
         input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.melspec_config["sample_rate"],

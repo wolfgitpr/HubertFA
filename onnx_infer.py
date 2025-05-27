@@ -131,6 +131,7 @@ def infer(onnx_folder,
     hubert_config = config['hubert_config']
     melspec_config = config['melspec_config']
     dictionaries = vocab['dictionaries']
+    language_prefix = vocab['language_prefix']
 
     encoder_name = hubert_config['encoder']
 
@@ -150,7 +151,7 @@ def infer(onnx_folder,
 
     for i in tqdm(range(len(dataset)), desc="Processing", unit="it"):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = dataset[i]
-        ph_seq = [f"{language}/{ph}" if ph not in ignored_phonemes else ph for ph in ph_seq]
+        ph_seq = [f"{language}/{ph}" if ph not in ignored_phonemes and language_prefix else ph for ph in ph_seq]
 
         waveform, sr = torchaudio.load(wav_path)
         waveform = waveform[0][None, :][0]

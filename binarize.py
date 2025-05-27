@@ -41,6 +41,7 @@ class ForcedAlignmentBinarizer:
         self.silent_phonemes = binary_config['silent_phonemes']
         self.melspec_config = binary_config['melspec_config']
 
+        self.language_prefix = binary_config['language_prefix']
         self.dictionaries = binary_config['dictionaries']
         self.merged_phoneme_groups = binary_config['merged_phoneme_groups'] if binary_config['merged_phoneme'] else []
 
@@ -89,7 +90,7 @@ class ForcedAlignmentBinarizer:
             ph_seq = list(set(" ".join(df["ph_seq"]).split(" ")))
 
             dataset_phonemes.extend(
-                [ph if ph in self.silent_phonemes or ph in self.global_phonemes
+                [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
                  else f"{language}/{ph}" for ph in ph_seq]
             )
 
@@ -104,7 +105,7 @@ class ForcedAlignmentBinarizer:
                             f"should not contain the reserved character '/'."
                         )
                     dict_phonemes.extend(
-                        [ph if ph in self.silent_phonemes or ph in self.global_phonemes
+                        [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
                          else f"{lang}/{ph}" for ph in _phonemes]
                     )
 
@@ -128,6 +129,7 @@ class ForcedAlignmentBinarizer:
 
         vocab_dict = {"vocab": vocab,
                       "vocab_size": len(dataset_phonemes),
+                      "language_prefix": self.language_prefix,
                       "silent_phonemes": list({"SP", *self.silent_phonemes}),
                       "global_phonemes": self.global_phonemes,
                       "merged_phoneme_groups": self.merged_phoneme_groups,
@@ -425,8 +427,9 @@ class ForcedAlignmentBinarizer:
             )
 
             df["ph_seq"] = df["ph_seq"].apply(
-                lambda ph_seq: ([ph if ph in self.silent_phonemes or ph in self.global_phonemes
-                                 else f"{language}/{ph}" for ph in ph_seq])
+                lambda ph_seq: (
+                    [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
+                     else f"{language}/{ph}" for ph in ph_seq])
             )
 
             df["ph_id_seq"] = df["ph_seq"].apply(lambda ph_seq: ([self.vocab['vocab'][ph] for ph in ph_seq]))

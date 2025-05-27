@@ -1,3 +1,4 @@
+language_prefix: true # 启用时，自动添加字典key的语种前缀、对多词典隔离
 # word /tab phoneme_1 /空格 phoneme_2 ...
 dictionaries:
   zh: dictionaries/opencpop-extension.txt
