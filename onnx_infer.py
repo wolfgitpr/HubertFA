@@ -131,7 +131,7 @@ def infer(onnx_folder,
     hubert_config = config['hubert_config']
     melspec_config = config['melspec_config']
     dictionaries = vocab['dictionaries']
-    language_prefix = vocab['language_prefix']
+    language_prefix = vocab.get("language_prefix", True)
 
     encoder_name = hubert_config['encoder']
 

@@ -38,7 +38,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.silent_phonemes: list = self.vocab["silent_phonemes"]
         self.global_phonemes: list = self.vocab["global_phonemes"]
         self.ignored_phones: list = self.silent_phonemes + self.global_phonemes
-        self.language_prefix = self.vocab["language_prefix"]
+        self.language_prefix = self.vocab.get("language_prefix", True)
 
         self.backbone_type = model_config["backbone"]
 
