@@ -34,6 +34,7 @@ silent_phonemes:
   - ''
   - pau
   - cl
+  - CL
 
 # 参照readme表格配置, mel使用melspec_config和hubert_config的channel(与n_mels一致)
 hubert_config:

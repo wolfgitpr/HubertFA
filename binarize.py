@@ -464,12 +464,12 @@ def binarize(config: str):
     datasets_config = config["datasets_config"]
     assert isinstance(datasets_config, list), f"{datasets_config} is not a list."
 
-    datasets = {}
+    datasets = []
     for dataset_path in datasets_config:
         if os.path.exists(dataset_path):
-            datasets.update(**load_yaml(dataset_path))
+            datasets.extend(load_yaml(dataset_path)["datasets"])
 
-    config.update(**datasets)
+    config["datasets"] = datasets
 
     global_config = {
         "max_length": config["max_length"],
