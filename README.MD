@@ -45,13 +45,15 @@
 2. --language指定语种(zh ja en yue)，--dictionary指定词典。默认字典为`opencpop-extension.txt`
 3. 准备需要强制对齐的数据，放入一个文件夹中（默认放在`/segments`文件夹），格式如下
 
-   segments/
-   ├── singer1/
-   │   ├── audio1.wav
-   │   ├── audio1.lab  # 录音文本（拼音/音素，空格隔开）
-   └── singer2/
-       ├── audio2.wav
-       └── audio2.lab
+   ```
+      segments/
+      ├── singer1/
+      │   ├── audio1.wav
+      │   ├── audio1.lab  # 录音文本（拼音/音素，空格隔开）
+      └── singer2/
+          ├── audio2.wav
+          └── audio2.lab
+   ```
 
    保证`.wav`文件和对应的`.lab`在同一个文件夹即可。
 
@@ -92,6 +94,7 @@
 
    把训练数据按以下格式放入`data`文件夹(也可按个人习惯)：
 
+   ```
    data/
    ├── full_label/  # 完整标注
    │   └── singer/
@@ -102,6 +105,7 @@
    │       ├── wavs/*.wav
    │       └── transcriptions.csv  # 需含`ph_seq`列
    └── no_label/    # 无标注，仅wav
+   ```
    
    关于`transcriptions.csv`的格式，参见：https://github.com/qiuqiao/SOFA/discussions/5
 
