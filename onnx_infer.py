@@ -68,7 +68,7 @@ def create_session(onnx_model_path):
 @click.command()
 @click.option(
     "--onnx_folder",
-    "-c",
+    "-of",
     default=None,
     required=True,
     type=str,
@@ -90,7 +90,7 @@ def create_session(onnx_model_path):
 )
 @click.option(
     "--language",
-    "-d",
+    "-l",
     default="zh",
     type=str,
     help="language of dictionary.(exp. zh ja en yue)",

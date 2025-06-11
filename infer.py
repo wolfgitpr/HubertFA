@@ -37,7 +37,7 @@ from train import LitForcedAlignmentTask
 )
 @click.option(
     "--language",
-    "-d",
+    "-l",
     default="zh",
     type=str,
     help="language of dictionary.(exp. zh ja en yue)",
