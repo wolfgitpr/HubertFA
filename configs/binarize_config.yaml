@@ -22,10 +22,7 @@ max_length: 45 # 单条音频最大时长
 extra_phonemes: [ ]
 
 # 公共音素（各语种通用）
-global_phonemes:
-  - AP
-  - EP
-  - GS
+global_phonemes: []
 
 # 无声音素
 silent_phonemes:
@@ -35,6 +32,9 @@ silent_phonemes:
   - pau
   - cl
   - CL
+  - AP
+  - EP
+  - GS
 
 # 参照readme表格配置, mel使用melspec_config和hubert_config的channel(与n_mels一致)
 hubert_config:
