@@ -7,6 +7,7 @@ import torch
 
 import networks.g2p
 from tools.config_utils import check_configs, load_yaml
+from tools.encoder import UnitsEncoder
 from tools.export_tool import Exporter
 from tools.post_processing import post_processing
 from train import LitForcedAlignmentTask
@@ -20,6 +21,9 @@ from train import LitForcedAlignmentTask
     required=True,
     type=str,
     help="path to the checkpoint",
+)
+@click.option(
+    "--encoder", "-e", default=None, type=str, help="path to the encoder model"
 )
 @click.option(
     "--folder", "-f", default="segments", type=str, help="path to the input folder"
@@ -51,6 +55,7 @@ from train import LitForcedAlignmentTask
 )
 def main(
         ckpt,
+        encoder,
         folder,
         g2p,
         save_confidence,
@@ -74,6 +79,8 @@ def main(
 
     torch.set_grad_enabled(False)
     model = LitForcedAlignmentTask.load_from_checkpoint(ckpt)
+    if encoder is not None:
+        model.unitsEncoder = UnitsEncoder(model.hubert_config, model.melspec_config, encoder, model.device)
     trainer = pl.Trainer(logger=False)
     predictions = trainer.predict(model, dataloaders=dataset, return_predictions=True)
 

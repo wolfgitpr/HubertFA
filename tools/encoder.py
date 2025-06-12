@@ -1,3 +1,6 @@
+import os.path
+import pathlib
+
 import torch
 import torch.nn.functional as F
 from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
@@ -9,7 +12,7 @@ from tools.get_melspec import MelSpecExtractor
 
 
 class UnitsEncoder(torch.nn.Module):
-    def __init__(self, hubert_config: dict, mel_config: dict, device=None):
+    def __init__(self, hubert_config: dict, mel_config: dict, encoder_ckpt=None, device=None):
         super().__init__()
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -17,7 +20,8 @@ class UnitsEncoder(torch.nn.Module):
         self.mel_config = mel_config
 
         self.encoder = hubert_config.get("encoder", "mel")
-        encoder_ckpt = hubert_config.get("model_path", None)
+        if encoder_ckpt is None:
+            encoder_ckpt = hubert_config.get("model_path", None)
 
         is_loaded_encoder = False
         if self.encoder == "mel":
@@ -93,6 +97,8 @@ class Audio2CNHubert(torch.nn.Module):
         super().__init__()
         print(' [Encoder Model] Chinese Hubert')
         print(' [Loading] ' + path)
+        if os.path.isfile(path):
+            path = str(pathlib.Path(path).parent)
         self.model = HubertModel.from_pretrained(path, local_files_only=True).to(device)
         self.model.eval()
         self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
