@@ -155,7 +155,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def on_predict_start(self):
         if self.unitsEncoder is None:
-            self.unitsEncoder = UnitsEncoder(self.hubert_config, self.melspec_config, self.device)
+            self.unitsEncoder = UnitsEncoder(self.hubert_config, self.melspec_config, device=self.device)
 
     def predict_step(self, batch, batch_idx):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = batch
@@ -180,7 +180,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             word_intervals,
             confidence
         ) = self.decoder.decode(
-            ph_frame_logits, ph_edge_logits, ctc_logits, wav_length, ph_seq, word_seq, ph_idx_to_word_idx
+            ph_frame_logits.cpu().numpy().astype("float32"), ph_edge_logits.cpu().numpy().astype("float32"),
+            ctc_logits.cpu().numpy().astype("float32"), wav_length, ph_seq, word_seq, ph_idx_to_word_idx
         )
 
         ph_seq = [x.split("/")[-1] for x in ph_seq]
@@ -433,7 +434,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
         (
             ph_seq_pred, ph_intervals_pred, _, _, _
         ) = self.decoder.decode(
-            ph_frame_logits, ph_edge_logits, ctc_logits, None, ph_seq_g2p, None, None, False
+            ph_frame_logits.cpu().numpy().astype("float32"), ph_edge_logits.cpu().numpy().astype("float32"),
+            ctc_logits.cpu().numpy().astype("float32"),
+            None, ph_seq_g2p, None, None, False
         )
 
         if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))

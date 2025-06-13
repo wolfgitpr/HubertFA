@@ -1,8 +1,22 @@
 import numba
 import numpy as np
-import torch
 
 from tools.plot import plot_for_valid
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+def softmax(x, axis=-1):
+    e_x = np.exp(x - np.max(x, axis=axis, keepdims=True))
+    return e_x / e_x.sum(axis=axis, keepdims=True)
+
+
+def log_softmax(x, axis=-1):
+    x_max = np.max(x, axis=axis, keepdims=True)
+    log_sum_exp = np.log(np.sum(np.exp(x - x_max), axis=axis, keepdims=True))
+    return x - x_max - log_sum_exp
 
 
 class AlignmentDecoder:
@@ -35,10 +49,12 @@ class AlignmentDecoder:
                ):
         ph_seq_id = np.array([self.vocab["vocab"][ph] for ph in ph_seq])
         self.ph_seq_id = ph_seq_id
+
         ph_mask = np.zeros(self.vocab["vocab_size"])
         ph_mask[ph_seq_id] = 1
         ph_mask[0] = 1  # ignored phonemes
-        ph_mask = torch.from_numpy(ph_mask)
+        ph_mask = (1 - ph_mask) * 1e9
+
         if word_seq is None:
             word_seq = ph_seq
             ph_idx_to_word_idx = np.arange(len(ph_seq))
@@ -51,32 +67,20 @@ class AlignmentDecoder:
             ctc_logits = ctc_logits[:, :num_frames, :]
 
         # [1, 1, vocab_size] unused phonemes inf
-        ph_mask = ph_mask.to(ph_frame_logits.device).unsqueeze(0).unsqueeze(0).logical_not() * 1e9
+        ph_frame_logits_adjusted = ph_frame_logits - ph_mask[np.newaxis, np.newaxis, :]
 
         # [T, vocab_size]
-        ph_frame_pred = (
-            torch.nn.functional.softmax(ph_frame_logits.float() - ph_mask.float(), dim=-1).squeeze(0)
-            .cpu().numpy().astype("float32")
-        )
+        ph_frame_pred = softmax(ph_frame_logits_adjusted, axis=-1)[0].astype("float32")
 
         # [T, vocab_size]
-        ph_prob_log = (
-            torch.log_softmax(ph_frame_logits.float() - ph_mask.float(), dim=-1).squeeze(0)
-            .cpu().numpy().astype("float32")
-        )
+        ph_prob_log = log_softmax(ph_frame_logits_adjusted, axis=-1)[0].astype("float32")
 
         # [T]
-        ph_edge_pred = (
-            ((torch.nn.functional.sigmoid(ph_edge_logits.float())).clamp(0.0, 1.0)).squeeze(0)
-            .cpu().numpy().astype("float32")
-        )
-
+        ph_edge_pred = np.clip(sigmoid(ph_edge_logits), 0.0, 1.0)[0].astype("float32")
         self.ph_frame_pred = ph_frame_pred
 
         # [1, T, vocab_size]
-        self.ctc_logits = (
-            ctc_logits.float().squeeze(0).cpu().numpy().astype("float32")
-        )  # (ctc_logits.squeeze(0) - ph_mask)
+        self.ctc_logits = ctc_logits # (ctc_logits.squeeze(0) - ph_mask)
 
         T, vocab_size = ph_frame_pred.shape
 

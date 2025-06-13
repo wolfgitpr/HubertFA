@@ -2,9 +2,8 @@ import os
 import pathlib
 
 import click
+import librosa
 import onnxruntime as ort
-import torch
-import torchaudio
 import yaml
 from tqdm import tqdm
 
@@ -123,8 +122,6 @@ def infer(onnx_folder,
     g2p_class = getattr(networks.g2p, g2p)
     grapheme_to_phoneme = g2p_class(**kwargs)
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
     config = load_config_from_yaml(onnx_folder / 'config.yaml')
     vocab = load_config_from_yaml(onnx_folder / 'vocab.yaml')
 
@@ -153,20 +150,18 @@ def infer(onnx_folder,
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = dataset[i]
         ph_seq = [f"{language}/{ph}" if ph not in ignored_phonemes and language_prefix else ph for ph in ph_seq]
 
-        waveform, sr = torchaudio.load(wav_path)
-        waveform = waveform[0][None, :][0]
+        waveform, sr = librosa.load(wav_path, sr=None, mono=True)
         if sr != melspec_config['sample_rate']:
-            waveform = torchaudio.transforms.Resample(sr, melspec_config['sample_rate'])(waveform)
+            waveform = librosa.resample(waveform, sr, melspec_config['sample_rate'])
 
         wav_length = waveform.shape[0] / melspec_config["sample_rate"]
 
-        input_feature = encode(encoder_session, [waveform.cpu().numpy()])[
-            "input_feature"]  # [B, T, C]
+        input_feature = encode(encoder_session, [waveform])["input_feature"]  # [B, T, C]
         results = predict(predict_session, input_feature)
 
-        ph_frame_logits = torch.as_tensor(results['ph_frame_logits'], device=device)
-        ph_edge_logits = torch.as_tensor(results['ph_edge_logits'], device=device)
-        ctc_logits = torch.as_tensor(results['ctc_logits'], device=device)
+        ph_frame_logits = results['ph_frame_logits']
+        ph_edge_logits = results['ph_edge_logits']
+        ctc_logits = results['ctc_logits']
 
         (
             ph_seq, ph_intervals, word_seq, word_intervals, confidence
