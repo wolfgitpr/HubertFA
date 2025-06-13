@@ -6,23 +6,10 @@
 
 专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。基于[SOFA](https://github.com/qiuqiao/SOFA)优化，支持多种音频编码器。
 
-⚠️ **预发布版**：当前分发模型仅推荐使用`mel`编码的ONNX版本，Hubert相关模型可能存在兼容性问题。
+⚠️ 建议使用[chinese-hubert](https://github.com/TencentGameMate/chinese_speech_pretrain)作编码器，效果更佳；**mel**
+版仅做小体积分发，效果与sofa相近。
 
 [模型分享说明](https://github.com/wolfgitpr/HubertFA/discussions/2)
-
-## 可选输入编码
-
-下表仅为同数据集下经验评分，不做严格参考。
-
-|        encoder        |       mel       | [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt) | [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base) |
-|:---------------------:|:---------------:|:----------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------:|
-|       encoder体积       |        0        |                                              360m                                              |                                  360m                                  |
-| 预处理体积 44.1k 16bit为基准  |      ~1.5x      |                                             ~2.3x                                              |                                  ~3x                                   |
-|         模型体积          |     默认参数13m     |                                               同前                                               |                                   同前                                   |
-| 最小编辑距离(标注风格影响，不等价于效果) |      0.012      |                                              0.09                                              |                                 0.075                                  |
-|         标注风格          | 尽量长（包括发音末尾超短混响） |                                       尽量短（仅覆盖能识别最短发音部分）                                        |                                   同前                                   |
-|        channel        |  128(同n_mels)   |                                              256                                               |                                  768                                   |
-|      model_path       |        无        |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
 
 ## 快速开始
 
@@ -30,11 +17,23 @@
 
 1. 克隆仓库并安装依赖：
    ```bash
-   git clone https://github.com/your-repo/HubertFA.git
+   git clone https://gitclone.com/github.com/wolfgitpr/HubertFA.git
    conda create -n HFA python=3.10 -y
    conda activate HFA
-2. 去[pytorch官网](https://pytorch.org/get-started/locally/)安装torch
-3. 安装其他python库
+   ```
+
+2. 安装其他python库：
+
+   仅推理使用：
+
+    ```bash
+    pip install -r requirements_onnx.txt
+    ```
+
+   训练：
+
+   去[pytorch官网](https://pytorch.org/get-started/locally/)安装torch
+
     ```bash
     pip install -r requirements.txt
     ```
@@ -42,14 +41,14 @@
 ### 推理
 
 1. 下载模型文件。你可以在本仓库[discussion](https://github.com/wolfgitpr/HubertFA/discussions)中找到onnx模型。
-2. --language指定语种(zh ja en yue)，--dictionary指定词典。默认字典为`opencpop-extension.txt`
+2. --language指定语种(zh ja en yue)，--dictionary指定词典（可选）。默认字典为`opencpop-extension.txt`
 3. 准备需要强制对齐的数据，放入一个文件夹中（默认放在`/segments`文件夹），格式如下
 
    ```
       segments/
       ├── singer1/
       │   ├── audio1.wav
-      │   ├── audio1.lab  # 录音文本（拼音/音素，空格隔开）
+      │   ├── audio1.lab  # 录音文本（拼音/音素，空格隔开），如"gan shou ting"
       └── singer2/
           ├── audio2.wav
           └── audio2.lab
@@ -57,36 +56,38 @@
 
    保证`.wav`文件和对应的`.lab`在同一个文件夹即可。
 
-   录音文本经过`g2p`模块转化为音素序列后，输入模型进行对齐。
-
-   例如，默认情况下使用`DictionaryG2P`模块和`opencpop-extension`词典时，加入录音文本的内容是：
-   `gan shou ting zai wo fa duan de zhi jian`，`g2p`模块根据词典转化为音素序列
-   `g an sh ou t ing z ai w o f a d uan d e zh ir j ian`。其他`g2p`
-   模块的使用方法，参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)。
-
 4. 命令行推理
 
-   使用`python infer.py`进行推理。
-
-   需要指定的参数：
-    - `--ckpt`：（必须指定）模型权重路径；
-    - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
-    - `--in_format`： 录音文本的文件后缀名（默认为`lab`）；
-    - `--save_confidence`：输出置信度。
-    - `--language`：指定语种，zh ja en yue（默认为`zh`）。
-    - `--dictionary`：字典文件（默认为`dictionary/opencpop-extension.txt`）；
+   onnx推理
 
     ```bash
-    python infer.py -c checkpoint_path -s segments_path -d dictionary_path ...
+    python onnx_infer.py --onnx_folder xxx --folder xxx_wav --language zh ...
     ```
+
+   参数：
+    - `--onnx_folder`：模型权重文件夹；
+    - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
+    - `--language`：指定语种，zh ja en yue（默认为`zh`）；
+    - `--save_confidence`：（可选）输出置信度；
+    - `--dictionary`：（可选）字典文件；
+
+   ckpt推理（开发者）
+
+    ```bash
+    python infer.py --ckpt xxx.ckpt --folder xxx_wav -language zh ...
+    ```
+
+   参数：
+    - `--ckpt`：模型权重文件夹；
+    - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
+    - `--language`：指定语种，zh ja en yue（默认为`zh`）；
+    - `--encoder`：（可选）音频编码器的路径，如Chinese hubert的文件夹
+    - `--save_confidence`：（可选）输出置信度；
+    - `--dictionary`：（可选）字典文件；
+
 5. 获取最终标注
 
    最终的标注保存在文件夹中，文件夹的名称是你选择的标注格式，这个文件夹的位置和推理所用的wav文件处于同一个文件夹中。
-
-## 高级功能
-
-- 使用自定义的g2p，而不是使用词典
-    - 参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)
 
 ### 训练
 
@@ -106,7 +107,7 @@
    │       └── transcriptions.csv  # 需含`ph_seq`列
    └── no_label/    # 无标注，仅wav
    ```
-   
+
    关于`transcriptions.csv`的格式，参见：https://github.com/qiuqiao/SOFA/discussions/5
 
    其中：
@@ -115,7 +116,19 @@
 
    `weak_label`中的`transcriptions.csv`无需拥有`ph_dur`这一个`column`；
 
-2. 修改配置（参考文件内注释）。
+2. 修改配置
+
+   下表仅为同数据集下各encoder的经验评分，不做严格参考。
+
+   |        encoder        |       mel       | [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt) | [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base) |
+      |:---------------------:|:---------------:|:----------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------:|
+   |       encoder体积       |        0        |                                              360m                                              |                                  360m                                  |
+   | 预处理体积 44.1k 16bit为基准  |      ~1.5x      |                                             ~2.3x                                              |                                  ~3x                                   |
+   |         模型体积          |     默认参数13m     |                                               同前                                               |                                   同前                                   |
+   | 最小编辑距离(标注风格影响，不等价于效果) |      0.012      |                                              0.09                                              |                                 0.075                                  |
+   |         标注风格          | 尽量长（包括发音末尾超短混响） |                                       尽量短（仅覆盖能识别最短发音部分）                                        |                                   同前                                   |
+   |        channel        |  128(同n_mels)   |                                              256                                               |                                  768                                   |
+   |      model_path       |        无        |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
 
    使用 `make_data_config.py` 自动扫描数据文件夹生成配置文件：
 
@@ -135,6 +148,18 @@
 3. 按需修改`binarize_config.yaml`，然后执行`python binarize.py --config/-c configs/binarize_config.yaml`；
 4. 训练`python train.py --config/-c configs/train_config.yaml`
 5. 训练可视化：`tensorboard --logdir=ckpt/`。
+
+## 高级功能
+
+录音文本经过`g2p`模块转化为音素序列后，输入模型进行对齐。
+
+例如，默认情况下使用`DictionaryG2P`模块和`opencpop-extension`词典时，加入录音文本的内容是：
+`gan shou ting zai wo fa duan de zhi jian`，`g2p`模块根据词典转化为音素序列
+`g an sh ou t ing z ai w o f a d uan d e zh ir j ian`。其他`g2p`
+模块的使用方法，参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)。
+
+- 使用自定义的g2p，而不是使用词典
+    - 参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)
 
 ## 评估（适用于模型开发者）
 
@@ -166,3 +191,4 @@ python evaluate.py <PRED_DIR> <TARGET_DIR> -r
 + [SOFA](https://github.com/qiuqiao/SOFA)
 + [DDSP-SVC](https://github.com/yxlllc/DDSP-SVC)
 + [hubert](https://github.com/bshall/hubert)
++ [chinese-hubert](https://github.com/TencentGameMate/chinese_speech_pretrain)

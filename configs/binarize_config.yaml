@@ -11,7 +11,7 @@ datasets_config: # 数据集
 
 binary_folder: data/binary_base_mel # 预处理结果文件夹
 
-multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、4-6g显存可开1个worker。
+multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
 multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
 multiprocess_start_size: 100  # 最小启动数据量
 
@@ -21,7 +21,7 @@ max_length: 45 # 单条音频最大时长
 # 暂未启用
 extra_phonemes: [ ]
 
-# 公共音素（各语种通用）
+# 公共音素（各语种通用）、暂时禁用
 global_phonemes: []
 
 # 无声音素
