@@ -327,7 +327,7 @@ class ForcedAlignmentBinarizer:
         global unitsEncoder
         if unitsEncoder is None:
             unitsEncoder = UnitsEncoder(self.binary_config['hubert_config'], self.binary_config['melspec_config'],
-                                        self.device)
+                                        device=self.device)
 
         global get_melspec
         if get_melspec is None and export_mel:
