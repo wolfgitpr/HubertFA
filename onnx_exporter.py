@@ -9,42 +9,12 @@ import onnxsim
 import torch
 import torchaudio
 import yaml
-from transformers import (
-    HubertModel,
-)
+from transformers import HubertModel
 
 from networks.task.forced_alignment import LitForcedAlignmentTask
 from tools.config_utils import load_yaml
-from tools.get_melspec import MelSpectrogram
 
 ONNX_EXPORT_VERSION = 1
-
-
-def export_mel_encoder(_encoder_path, _melspec_config, device="cpu"):
-    encoder = MelSpectrogram(
-        _melspec_config["n_mels"], _melspec_config["sample_rate"], _melspec_config["win_length"],
-        _melspec_config["hop_length"], _melspec_config["n_fft"], _melspec_config["fmin"], _melspec_config["fmax"],
-        device=device,
-    )
-    waveform = torch.randn((1, 44100), dtype=torch.float32, device=device)
-    with torch.no_grad():
-        torch.onnx.export(
-            encoder,
-            waveform,
-            _encoder_path,
-            input_names=['waveform'],
-            output_names=['input_feature'],
-            dynamic_axes={
-                'waveform': {1: 'n_samples'},
-                'input_feature': {1: 'n_samples'},
-            },
-            opset_version=17,
-            do_constant_folding=False,
-        )
-        onnx_model, check = onnxsim.simplify(_encoder_path, include_subgraph=True)
-        assert check, 'Simplified ONNX model could not be validated'
-        onnx.save(onnx_model, _encoder_path)
-        print(f'Encoder Model saved to: {_encoder_path}')
 
 
 class UnitsAligner(torch.nn.Module):
@@ -259,13 +229,10 @@ def export(ckpt_path, onnx_folder):
     encoder_path = str(onnx_folder / f"{encoder_name}-{hubert_config['channel']}.onnx")
     onnx_path = str(onnx_folder / "model.onnx")
 
-    assert hubert_config["encoder"] in ["mel", "cnhubert"], f"{hubert_config['encoder']} must be 'mel'"
+    assert hubert_config["encoder"] in ["cnhubert"], f"{hubert_config['encoder']} must be 'cnhubert'"
     assert not os.path.exists(onnx_path), f"Error: The file '{onnx_path}' already exists."
 
-    if encoder_name == "mel":
-        export_mel_encoder(encoder_path, melspec_config)
-    else:
-        export_hubert_encoder(encoder_path, hubert_config, melspec_config)
+    export_hubert_encoder(encoder_path, hubert_config, melspec_config)
 
     export_fa_model(onnx_path, ckpt_path, hubert_config, melspec_config)
 

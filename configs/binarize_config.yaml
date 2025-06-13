@@ -9,7 +9,7 @@ dictionaries:
 datasets_config: # 数据集
   - configs/datasets_config.yaml
 
-binary_folder: data/binary_base_mel # 预处理结果文件夹
+binary_folder: data/binary_units # 预处理结果文件夹
 
 multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
 multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
@@ -22,7 +22,7 @@ max_length: 45 # 单条音频最大时长
 extra_phonemes: [ ]
 
 # 公共音素（各语种通用）、暂时禁用
-global_phonemes: []
+global_phonemes: [ ]
 
 # 无声音素
 silent_phonemes:
@@ -36,15 +36,15 @@ silent_phonemes:
   - EP
   - GS
 
-# 参照readme表格配置, mel使用melspec_config和hubert_config的channel(与n_mels一致)
+# 参照readme表格配置
 hubert_config:
-  encoder: mel
-  model_path: dependencies/chinese-hubert-base # encoder为mel时仅channel有效
+  encoder: cnhubert
+  model_path: dependencies/chinese-hubert-base
   sample_rate: 16000
   hop_size: 320
-  channel: 128
+  channel: 768
 
-# 一般情况不用改
+# 仅tb绘图使用
 melspec_config:
   n_mels: 128
   sample_rate: 44100

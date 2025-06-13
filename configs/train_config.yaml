@@ -1,10 +1,10 @@
-model_name: hfa-model-mel
+model_name: hfa-model
 
 # settings
 float32_matmul_precision: high
 random_seed: 123456
 
-binary_folder: data/binary_base_mel
+binary_folder: data/binary_units
 
 # 开的太高需要有足够内存、cpu
 dataloader_workers: 2

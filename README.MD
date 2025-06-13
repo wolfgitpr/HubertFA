@@ -6,8 +6,7 @@
 
 专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。基于[SOFA](https://github.com/qiuqiao/SOFA)优化，支持多种音频编码器。
 
-⚠️ 建议使用[chinese-hubert](https://github.com/TencentGameMate/chinese_speech_pretrain)作编码器，效果更佳；**mel**
-版仅做小体积分发，效果与sofa相近。
+⚠️ 建议使用[chinese-hubert](https://github.com/TencentGameMate/chinese_speech_pretrain)作编码器，效果更佳。
 
 [模型分享说明](https://github.com/wolfgitpr/HubertFA/discussions/2)
 
@@ -120,15 +119,15 @@
 
    下表仅为同数据集下各encoder的经验评分，不做严格参考。
 
-   |        encoder        |       mel       | [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt) | [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base) |
-      |:---------------------:|:---------------:|:----------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------:|
-   |       encoder体积       |        0        |                                              360m                                              |                                  360m                                  |
-   | 预处理体积 44.1k 16bit为基准  |      ~1.5x      |                                             ~2.3x                                              |                                  ~3x                                   |
-   |         模型体积          |     默认参数13m     |                                               同前                                               |                                   同前                                   |
-   | 最小编辑距离(标注风格影响，不等价于效果) |      0.012      |                                              0.09                                              |                                 0.075                                  |
-   |         标注风格          | 尽量长（包括发音末尾超短混响） |                                       尽量短（仅覆盖能识别最短发音部分）                                        |                                   同前                                   |
-   |        channel        |  128(同n_mels)   |                                              256                                               |                                  768                                   |
-   |      model_path       |        无        |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
+   |        encoder        | [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt) | [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base) |
+   |:---------------------:|:----------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------:|
+   |       encoder体积       |                                              360m                                              |                                  360m                                  |
+   | 预处理体积 44.1k 16bit为基准  |                                             ~2.3x                                              |                                  ~3x                                   |
+   |         模型体积          |                                               同前                                               |                                   同前                                   |
+   | 最小编辑距离(标注风格影响，不等价于效果) |                                              0.09                                              |                                 0.075                                  |
+   |         标注风格          |                                       尽量短（仅覆盖能识别最短发音部分）                                        |                                   同前                                   |
+   |        channel        |                                              256                                               |                                  768                                   |
+   |      model_path       |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
 
    使用 `make_data_config.py` 自动扫描数据文件夹生成配置文件：
 
