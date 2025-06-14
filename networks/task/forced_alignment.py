@@ -180,8 +180,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             word_intervals,
             confidence
         ) = self.decoder.decode(
-            ph_frame_logits.cpu().numpy().astype("float32"), ph_edge_logits.cpu().numpy().astype("float32"),
-            ctc_logits.cpu().numpy().astype("float32"), wav_length, ph_seq, word_seq, ph_idx_to_word_idx
+            ph_frame_logits.float().cpu().numpy(), ph_edge_logits.float().cpu().numpy(),
+            ctc_logits.float().cpu().numpy(), wav_length, ph_seq, word_seq, ph_idx_to_word_idx
         )
 
         ph_seq = [x.split("/")[-1] for x in ph_seq]
@@ -434,8 +434,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
         (
             ph_seq_pred, ph_intervals_pred, _, _, _
         ) = self.decoder.decode(
-            ph_frame_logits.cpu().numpy().astype("float32"), ph_edge_logits.cpu().numpy().astype("float32"),
-            ctc_logits.cpu().numpy().astype("float32"),
+            ph_frame_logits.float().cpu().numpy(), ph_edge_logits.float().cpu().numpy(),
+            ctc_logits.float().cpu().numpy(),
             None, ph_seq_g2p, None, None, False
         )
 
