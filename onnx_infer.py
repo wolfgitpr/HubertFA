@@ -52,6 +52,7 @@ def infer(onnx_folder, folder, g2p, save_confidence, language, dictionary):
         g2p += "G2P"
     g2p_class = getattr(networks.g2p, g2p)
     grapheme_to_phoneme = g2p_class(**{"language": language, "dictionary": dictionary})
+    dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
 
     config = load_yaml(onnx_folder / 'config.yaml')
     vocab = load_yaml(onnx_folder / 'vocab.yaml')
@@ -66,7 +67,6 @@ def infer(onnx_folder, folder, g2p, save_confidence, language, dictionary):
 
     # Process dataset
     decoder = AlignmentDecoder(vocab, mel_cfg)
-    dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
     predictions = []
     ignored_phonemes = vocab['silent_phonemes'] + vocab['global_phonemes']
 

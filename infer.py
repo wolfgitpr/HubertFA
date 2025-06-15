@@ -53,28 +53,20 @@ from train import LitForcedAlignmentTask
     type=str,
     help="(only used when --g2p=='Dictionary') path to the dictionary",
 )
-def main(
-        ckpt,
-        encoder,
-        folder,
-        g2p,
-        save_confidence,
-        **kwargs,
-):
+def main(ckpt, encoder, folder, g2p, save_confidence, language, dictionary):
     model_dir = pathlib.Path(ckpt).parent
     check_configs(model_dir)
 
     if "Dictionary" in g2p:
-        if kwargs["dictionary"] is None:
+        if dictionary is None:
             vocab = load_yaml(model_dir / "vocab.yaml")
-            dictionary_path = model_dir / vocab["dictionaries"].get(kwargs["language"], "")
-            kwargs["dictionary"] = dictionary_path
-        assert os.path.exists(kwargs["dictionary"]), f"{pathlib.Path(kwargs['dictionary']).absolute()} does not exist"
+            dictionary = model_dir / vocab["dictionaries"].get(language, "")
+        assert os.path.exists(dictionary), f"{pathlib.Path(dictionary).absolute()} does not exist"
 
     if not g2p.endswith("G2P"):
         g2p += "G2P"
     g2p_class = getattr(networks.g2p, g2p)
-    grapheme_to_phoneme = g2p_class(**kwargs)
+    grapheme_to_phoneme = g2p_class(**{"language": language, "dictionary": dictionary})
     dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
 
     torch.set_grad_enabled(False)

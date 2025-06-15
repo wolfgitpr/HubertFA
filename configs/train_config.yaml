@@ -21,7 +21,6 @@ get_evaluate_loss: False
 
 # model，建议不修改，或对照实验
 model:
-  backbone: 'unet'
   hidden_dims: 192
   down_sampling_factor: 2
   down_sampling_times: 3
