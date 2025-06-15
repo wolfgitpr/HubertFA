@@ -1,5 +1,3 @@
-import warnings
-
 import lightning as pl
 import textgrid
 import torch
@@ -38,8 +36,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.global_phonemes: list = self.vocab["global_phonemes"]
         self.ignored_phones: list = self.silent_phonemes + self.global_phonemes
         self.language_prefix = self.vocab.get("language_prefix", True)
-
-        self.backbone_type = model_config["backbone"]
 
         self.backbone = UNetBackbone(
             input_dims=hubert_config["channel"],

@@ -335,6 +335,7 @@ class ForcedAlignmentBinarizer:
 
         try:
             if not os.path.exists(wav_path := _item["wav_path"]):
+                print(f"Skipping {wav_path}, because it doesn't exist")
                 return None
 
             waveform = load_wav(wav_path, self.device, self.sample_rate)  # (L,)
@@ -361,7 +362,9 @@ class ForcedAlignmentBinarizer:
             ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
                 self.vocab, T, label_type_id, _item.ph_id_seq, _item.ph_dur
             )
-            if ph_id_seq is None: return None
+            if ph_id_seq is None:
+                print(f"Skipping {wav_path}, make ph data failed.")
+                return None
 
             return {
                 'name': str(_item["name"]),
@@ -399,7 +402,8 @@ class ForcedAlignmentBinarizer:
                 df = pd.DataFrame(
                     columns=["name", "ph_seq", "ph_id_seq", "label_type", "wav_length", "validation"])
                 wavs_path = [i for i in raw_data_dir.rglob("*.wav")]
-                df["name"] = [os.path.splitext(os.path.basename(i))[0] for i in wavs_path]
+                df["wav_path"] = wavs_path
+                df["name"] = df["wav_path"].apply(lambda wav_path: os.path.splitext(os.path.basename(wav_path)))
                 df["wav_length"] = 0
                 df["validation"] = False
             else:
@@ -419,21 +423,18 @@ class ForcedAlignmentBinarizer:
                 else:
                     df["validation"] = False
 
-            df["label_type"] = label_type
-            df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
+                df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
 
+            df["label_type"] = label_type
             df["ph_seq"] = df["ph_seq"].apply(
                 lambda raw_str: ([ph for ph in raw_str.split(" ")] if isinstance(raw_str, str) else [])
             )
-
             df["ph_seq"] = df["ph_seq"].apply(
                 lambda ph_seq: (
                     [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
                      else f"{language}/{ph}" for ph in ph_seq])
             )
-
             df["ph_id_seq"] = df["ph_seq"].apply(lambda ph_seq: ([self.vocab['vocab'][ph] for ph in ph_seq]))
-
             meta_data_df = pd.concat([meta_data_df, df]) if len(meta_data_df) >= 1 else df
 
         meta_data_df.reset_index(drop=True, inplace=True)
