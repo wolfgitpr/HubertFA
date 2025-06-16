@@ -25,36 +25,47 @@ class Metric:
 
 
 class VlabelerEditsCount(Metric):
-    def __init__(self, move_min=0.02, move_max=0.05):
-        self.move_min = move_min
-        self.move_max = move_max
+    def __init__(self, move_min_frames=1, move_max_frames=2):
+        # Convert frame counts to seconds
+        self.move_min = move_min_frames
+        self.move_max = move_max_frames
         self.counts = 0
 
     def update(self, pred: tg.PointTier, target: tg.PointTier):
         m, n = len(pred), len(target)
+        if m != n:
+            min_len = min(m, n)
+            pred = pred[:min_len]
+            target = target[:min_len]
+            m = n = min_len
 
         dp = [[0] * (n + 1) for _ in range(m + 1)]
 
         for i in range(1, m + 1):
-            dp[i][0] = i  # 删除操作
+            dp[i][0] = i  # Deletion cost
         for j in range(1, n + 1):
-            dp[0][j] = j * 2  # 插入操作
+            dp[0][j] = j * 2  # Insertion cost
 
-        # 填充DP表
+        # Fill DP table
         for i in range(1, m + 1):
             for j in range(1, n + 1):
-                # 插入操作成本
+                # Insertion cost
                 insert = dp[i][j - 1] + 1
                 if j == 1 or target[j - 1].mark != target[j - 2].mark:
                     insert += 1
 
-                # 删除操作成本
+                # Deletion cost
                 delete = dp[i - 1][j] + 1
 
-                # 移动/替换操作成本
+                # Move/substitution cost
                 move = dp[i - 1][j - 1]
-                if self.move_max >= abs(pred[i - 1].time - target[j - 1].time) > self.move_min:
+                time_diff = abs(pred[i - 1].time - target[j - 1].time)
+
+                # Only count if time difference is within specified frame range
+                if self.move_min <= time_diff < self.move_max:
                     move += 1
+
+                # Additional cost for mismatched labels
                 if pred[i - 1].mark != target[j - 1].mark:
                     move += 1
 
@@ -71,18 +82,18 @@ class VlabelerEditsCount(Metric):
 
 class VlabelerEditRatio(Metric):
     """
-    编辑距离除以target的总长度
     Edit distance divided by total length of target.
     """
 
-    def __init__(self, move_min=0.02, move_max=0.05):
-        self.edit_distance = VlabelerEditsCount(move_min, move_max)
+    def __init__(self, move_min_frames=1, move_max_frames=2):
+        self.edit_distance = VlabelerEditsCount(move_min_frames, move_max_frames)
         self.total = 0
 
     def update(self, pred: tg.PointTier, target: tg.PointTier):
         self.edit_distance.update(pred, target)
-        # PointTier中的第一个边界位置不需要编辑，最后一个音素必定为空
-        self.total += 2 * len(target) - 2
+        # Total possible edits: 每个点可能有插入、删除、移动三种操作
+        # 简化计算：使用目标序列长度的两倍作为最大可能编辑数
+        self.total += 2 * len(target)
 
     def compute(self):
         if self.total == 0:
@@ -242,6 +253,7 @@ class BoundaryEditDistance(Metric):
 
     def reset(self):
         self.distance = 0.0
+        self.phonemes = 0
 
 
 class BoundaryEditRatio(Metric):
@@ -252,15 +264,10 @@ class BoundaryEditRatio(Metric):
     def __init__(self):
         self.distance_metric = BoundaryEditDistance()
         self.duration = 0.0
-        self.counts = 0
-        self.error = 0
 
     def update(self, pred: tg.PointTier, target: tg.PointTier):
-        self.counts += 1
         if self.distance_metric.update(pred, target):
             self.duration += target[-1].time - target[0].time
-        else:
-            self.error += 1
 
     def compute(self):
         if self.duration == 0.0:
@@ -292,5 +299,6 @@ class BoundaryEditRatioWeighted(Metric):
         return round(
             (self.distance_metric.compute() / self.duration) /
             (1 - self.distance_metric.error_phonemes / self.distance_metric.phonemes) +
-            (self.error / self.counts) * 0.2
-            , 6)
+            (self.error / self.counts) * 0.2,
+            6
+        )

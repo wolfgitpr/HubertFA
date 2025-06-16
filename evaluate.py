@@ -5,7 +5,7 @@ from typing import Dict
 
 import click
 import tqdm
-from textgrid import PointTier
+from textgrid import PointTier, Point
 
 from tools import label
 from tools.metrics import (
@@ -28,6 +28,17 @@ def remove_ignored_phonemes(ignored_phonemes_list: list[str], point_tier: PointT
         res_tier.addPoint(point_tier[i + 1])
 
     return res_tier
+
+
+def quantize_tier(tier: PointTier, frame_length: float) -> CustomPointTier:
+    """Quantize tier times to frame boundaries"""
+    new_tier = CustomPointTier(name=tier.name)
+    points = sorted(tier.points, key=lambda p: p.time)  # 确保时间点有序
+    for point in points:
+        # Quantize to nearest frame boundary
+        quantized_time = round(point.time / frame_length)
+        new_tier.addPoint(Point(quantized_time, point.mark))
+    return new_tier
 
 
 @click.command(
@@ -59,21 +70,29 @@ def remove_ignored_phonemes(ignored_phonemes_list: list[str], point_tier: PointT
     help="Ignored phone marks, split by commas",
     show_default=True,
 )
-def main(pred: str, target: str, recursive: bool, strict: bool, ignore: str):
+@click.option(
+    "--frame_length",
+    "-fl",
+    type=float,
+    default=512 / 44100,
+    help="Frame length in seconds for quantization (default: 512/44100)",
+    show_default=True,
+)
+def main(pred: str, target: str, recursive: bool, strict: bool, ignore: str, frame_length: float):
     pred_dir = pathlib.Path(pred)
     target_dir = pathlib.Path(target)
     if recursive:
         iterable = list(pred_dir.rglob("*.TextGrid"))
     else:
         iterable = list(pred_dir.glob("*.TextGrid"))
-    ignored = ignore.split(",")
+    ignored = [ph.strip() for ph in ignore.split(",") if ph.strip()]
     metrics: Dict[str, Metric] = {
         "BoundaryEditRatio": BoundaryEditRatio(),
         "BoundaryEditRatioWeighted": BoundaryEditRatioWeighted(),
-        "VlabelerEditRatio10-20ms": VlabelerEditRatio(move_min=0.01, move_max=0.02),
-        "VlabelerEditRatio20-50ms": VlabelerEditRatio(move_min=0.02, move_max=0.05),
-        "VlabelerEditRatio50-100ms": VlabelerEditRatio(move_min=0.05, move_max=0.1),
-        "VlabelerEditRatio100-5000ms": VlabelerEditRatio(move_min=0.1, move_max=5.0),
+        "VlabelerEditRatio_1-2frames": VlabelerEditRatio(move_min_frames=1, move_max_frames=2),
+        "VlabelerEditRatio_3-5frames": VlabelerEditRatio(move_min_frames=3, move_max_frames=5),
+        "VlabelerEditRatio_6-9frames": VlabelerEditRatio(move_min_frames=6, move_max_frames=9),
+        "VlabelerEditRatio_10+frames": VlabelerEditRatio(move_min_frames=10, move_max_frames=10000),
         "IntersectionOverUnion": IntersectionOverUnion(),
     }
 
@@ -86,13 +105,18 @@ def main(pred: str, target: str, recursive: bool, strict: bool, ignore: str):
                 f'which should be "{target_file}".',
                 category=UserWarning,
             )
-            warnings.filterwarnings("default")
             continue
 
         pred_tier = label.textgrid_from_file(pred_file)[-1]
         target_tier = label.textgrid_from_file(target_file)[-1]
+
+        # Remove ignored phonemes
         pred_tier = remove_ignored_phonemes(ignored, pred_tier)
         target_tier = remove_ignored_phonemes(ignored, target_tier)
+
+        # Quantize to frame boundaries
+        pred_tier = quantize_tier(pred_tier, frame_length)
+        target_tier = quantize_tier(target_tier, frame_length)
 
         for metric in metrics.values():
             try:
@@ -103,7 +127,6 @@ def main(pred: str, target: str, recursive: bool, strict: bool, ignore: str):
                         f"Failed to evaluate metric {metric.__class__.__name__} for file {pred_file}: {e}",
                         category=UserWarning,
                     )
-                    warnings.filterwarnings("default")
                     continue
                 else:
                     raise e

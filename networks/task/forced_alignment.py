@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim.lr_scheduler as lr_scheduler_module
 
 import networks.scheduler as scheduler_module
-from evaluate import remove_ignored_phonemes
+from evaluate import remove_ignored_phonemes, quantize_tier
 from networks.layer.backbone.unet import UNetBackbone
 from networks.layer.block.resnet_block import ResidualBasicBlock
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
@@ -56,6 +56,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.hubert_config = hubert_config
         self.optimizer_config = optimizer_config
         self.config = config
+        self.frame_length = 512 / 44100
 
         self.losses_names = [
             "ph_frame_GHM_loss",
@@ -349,10 +350,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
         metrics = {
             "BoundaryEditRatio": BoundaryEditRatio(),
             "BoundaryEditRatioWeighted": BoundaryEditRatioWeighted(),
-            "VlabelerEditRatio10-20ms": VlabelerEditRatio(move_min=0.01, move_max=0.02),
-            "VlabelerEditRatio20-50ms": VlabelerEditRatio(move_min=0.02, move_max=0.05),
-            "VlabelerEditRatio50-100ms": VlabelerEditRatio(move_min=0.05, move_max=0.1),
-            "VlabelerEditRatio100-5000ms": VlabelerEditRatio(move_min=0.1, move_max=5.0)
+            "VlabelerEditRatio_1-2frames": VlabelerEditRatio(move_min_frames=1, move_max_frames=2),
+            "VlabelerEditRatio_3-5frames": VlabelerEditRatio(move_min_frames=3, move_max_frames=5),
+            "VlabelerEditRatio_6-9frames": VlabelerEditRatio(move_min_frames=6, move_max_frames=9),
+            "VlabelerEditRatio_10+frames": VlabelerEditRatio(move_min_frames=10, move_max_frames=10000)
         }
 
         if tiers:
@@ -360,12 +361,13 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 for metric in metrics.values():
                     pred_tier = remove_ignored_phonemes(self.ignored_phones, pred_tier)
                     target_tier = remove_ignored_phonemes(self.ignored_phones, target_tier)
-                    metric.update(pred_tier, target_tier)
+                    metric.update(quantize_tier(pred_tier, self.frame_length),
+                                  quantize_tier(target_tier, self.frame_length))
 
         result = {key: metric.compute() for key, metric in metrics.items()}
 
-        vlabeler_loss = result["VlabelerEditRatio10-20ms"] * 0.1 + result["VlabelerEditRatio20-50ms"] * 0.2 + \
-                        result["VlabelerEditRatio50-100ms"] * 0.3 + result["VlabelerEditRatio100-5000ms"] * 0.4
+        vlabeler_loss = result["VlabelerEditRatio_1-2frames"] * 0.1 + result["VlabelerEditRatio_3-5frames"] * 0.2 + \
+                        result["VlabelerEditRatio_6-9frames"] * 0.3 + result["VlabelerEditRatio_10+frames"] * 0.4
         result["vlabeler_loss"] = vlabeler_loss
         result["total"] = vlabeler_loss * 0.5 + result["BoundaryEditRatioWeighted"] * 0.5
         return result
