@@ -30,6 +30,7 @@ class ForcedAlignmentBinarizer:
         self.multiprocess_max_size = binary_config.get("multiprocess_max_size", 100)
         self.multiprocess_start_size = binary_config.get("multiprocess_start_size", 100)
 
+        self.units_cache = binary_config.get("units_cache", True)
         self.datasets = binary_config['datasets']
         self.binary_folder = pathlib.Path(binary_config['binary_folder'])
 
@@ -339,7 +340,6 @@ class ForcedAlignmentBinarizer:
                 return None
 
             waveform = load_wav(wav_path, self.device, self.sample_rate)  # (L,)
-
             wav_length = len(waveform) / self.sample_rate  # seconds
             if wav_length > self.max_length:
                 print(
@@ -348,7 +348,12 @@ class ForcedAlignmentBinarizer:
                 return None
 
             # units encode
-            units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size)  # [B, T, C]
+            npy_path = pathlib.Path(wav_path).with_suffix(".npy")
+            if os.path.exists(npy_path) and self.units_cache:
+                units = torch.as_tensor(np.load(npy_path))
+            else:
+                units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
+                                             self.hop_size)  # [B, T, C]
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
             B, T, C = units.shape
