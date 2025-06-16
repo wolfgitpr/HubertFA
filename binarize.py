@@ -41,6 +41,7 @@ class ForcedAlignmentBinarizer:
         self.global_phonemes = binary_config['global_phonemes']
         self.silent_phonemes = binary_config['silent_phonemes']
         self.melspec_config = binary_config['melspec_config']
+        self.ignored_phonemes = binary_config['global_phonemes'] + binary_config['silent_phonemes']
 
         self.language_prefix = binary_config['language_prefix']
         self.dictionaries = binary_config['dictionaries']
@@ -91,7 +92,7 @@ class ForcedAlignmentBinarizer:
             ph_seq = list(set(" ".join(df["ph_seq"]).split(" ")))
 
             dataset_phonemes.extend(
-                [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
+                [ph if ph in self.ignored_phonemes or "/" in ph or not self.language_prefix
                  else f"{language}/{ph}" for ph in ph_seq]
             )
 
@@ -106,7 +107,7 @@ class ForcedAlignmentBinarizer:
                             f"should not contain the reserved character '/'."
                         )
                     dict_phonemes.extend(
-                        [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
+                        [ph if ph in self.ignored_phonemes or "/" in ph or not self.language_prefix
                          else f"{lang}/{ph}" for ph in _phonemes]
                     )
 
@@ -347,16 +348,19 @@ class ForcedAlignmentBinarizer:
                 )
                 return None
 
+            npy_loaded = False
             # units encode
             npy_path = pathlib.Path(wav_path).with_suffix(".npy")
             if os.path.exists(npy_path) and self.units_cache:
                 units = torch.as_tensor(np.load(npy_path))
-            else:
+                npy_loaded = True if units.shape[1] > 0 else False
+            if not npy_loaded:
                 units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
                                              self.hop_size)  # [B, T, C]
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
             B, T, C = units.shape
+            assert T > 0, f"Length of unit {T} must be greater than 0."
             assert C == self.hubert_channel, f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
 
             label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
@@ -436,7 +440,7 @@ class ForcedAlignmentBinarizer:
             )
             df["ph_seq"] = df["ph_seq"].apply(
                 lambda ph_seq: (
-                    [ph if ph in self.silent_phonemes or ph in self.global_phonemes or not self.language_prefix
+                    [ph if ph in self.ignored_phonemes or "/" in ph or not self.language_prefix
                      else f"{language}/{ph}" for ph in ph_seq])
             )
             df["ph_id_seq"] = df["ph_seq"].apply(lambda ph_seq: ([self.vocab['vocab'][ph] for ph in ph_seq]))

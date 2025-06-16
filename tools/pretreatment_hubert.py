@@ -64,6 +64,7 @@ def pretreatment_hubert(config: str):
                 units = unitsEncoder.forward(waveform.unsqueeze(0), sample_rate, hop_size)  # [B, T, C]
 
                 B, T, C = units.shape
+                assert T > 0, f"Length of unit {T} must be greater than 0."
                 assert C == hubert_channel, f"Item {wav_path} has unexpect channel of {C}, which should be {hubert_channel}."
 
                 np.save(npy_path, units.float().cpu().numpy())
