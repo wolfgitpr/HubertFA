@@ -153,7 +153,8 @@ class IntersectionOverUnion(Metric):
     def compute(self, phonemes=None):
         if phonemes is None:
             return {
-                k: round(v / (self.sum[k] - v), 6) for k, v in self.intersection.items()
+                k: round(v / (self.sum[k] - v), 6) if self.sum[k] != v else 0.0
+                for k, v in self.intersection.items()
             }
 
         if isinstance(phonemes, str):
