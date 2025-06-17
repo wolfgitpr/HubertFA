@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from networks.task.forced_alignment import LitForcedAlignmentTask
 from tools.config_utils import load_yaml
-from tools.dataset import MixedDataset, WeightedBinningAudioBatchSampler, collate_fn
+from tools.dataset import MixedDataset, BinningAudioBatchSampler, collate_fn
 from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback, MonitorCheckpointsCallback
 
 
@@ -68,10 +68,8 @@ def main(config: str, pretrained_model_path, resume):
     # define dataset
     num_workers = config['dataloader_workers']
     train_dataset = MixedDataset(binary_folder, prefix="train")
-    train_sampler = WeightedBinningAudioBatchSampler(
-        train_dataset.get_label_types(),
+    train_sampler = BinningAudioBatchSampler(
         train_dataset.get_wav_lengths(),
-        config["oversampling_weights"],
         config["batch_max_length"],
         config["binning_length"],
         config["drop_last"],

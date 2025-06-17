@@ -2,7 +2,6 @@ import pathlib
 
 import h5py
 import numpy as np
-import pandas as pd
 import torch
 
 
@@ -15,8 +14,6 @@ class IndexedDatasetBuilder:
         self.items = self.dset.create_group("items")
 
         self.counter = 0
-
-        self.label_types = []
         self.wav_lengths = []
 
     def add_item(self, item):
@@ -29,12 +26,9 @@ class IndexedDatasetBuilder:
                 group.create_dataset(key, data=value, dtype=h5py.string_dtype(encoding="utf-8"))
             else:
                 group[key] = value
-
-        self.label_types.append(item["label_type"])
         self.wav_lengths.append(item["wav_length"])
 
     def finalize(self):
-        self.h5_meta.create_dataset("label_types", data=np.array(self.label_types, dtype=np.int32))
         self.h5_meta.create_dataset("wav_lengths", data=np.array(self.wav_lengths, dtype=np.float32))
         self.dset.close()
 
@@ -47,21 +41,11 @@ class MixedDataset(torch.utils.data.Dataset):
     ):
         # do not open hdf5 here
         self.h5py_file = None
-        self.label_types = None
         self.wav_lengths = None
         self.augmentation_indexes = None
 
         self.binary_data_folder = binary_data_folder
         self.prefix = prefix
-
-    def get_label_types(self):
-        uninitialized = self.label_types is None
-        if uninitialized:
-            self._open_h5py_file()
-        ret = self.label_types
-        if uninitialized:
-            self._close_h5py_file()
-        return ret
 
     def get_wav_lengths(self):
         uninitialized = self.wav_lengths is None
@@ -76,7 +60,6 @@ class MixedDataset(torch.utils.data.Dataset):
         self.h5py_file = h5py.File(
             str(pathlib.Path(self.binary_data_folder) / (self.prefix + ".data")), "r"
         )
-        self.label_types = np.array(self.h5py_file["meta_data"]["label_types"])
         self.wav_lengths = np.array(self.h5py_file["meta_data"]["wav_lengths"])
 
     def _close_h5py_file(self):
@@ -113,137 +96,98 @@ class MixedDataset(torch.utils.data.Dataset):
         return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, label_type, melspec, ph_time, name, ph_seq_raw, ph_time_raw
 
 
-class WeightedBinningAudioBatchSampler(torch.utils.data.Sampler):
+class BinningAudioBatchSampler(torch.utils.data.Sampler):
     def __init__(
             self,
-            type_ids,
             wav_lengths,
-            oversampling_weights=None,
             max_length=100,
             binning_length=1000,
             drop_last=False,
     ):
-        if oversampling_weights is None:
-            oversampling_weights = [1] * (max(type_ids) + 1)
-        oversampling_weights = np.array(oversampling_weights).astype(np.float32)
-
-        assert min(oversampling_weights) > 0
-        assert len(oversampling_weights) >= max(type_ids) + 1
-        assert min(type_ids) >= 0
-        assert len(type_ids) == len(wav_lengths)
+        assert len(wav_lengths) > 0
         assert max_length > 0
         assert binning_length > 0
 
-        count = np.bincount(type_ids)
-        count = np.pad(count, (0, len(oversampling_weights) - len(count)))
-        self.oversampling_weights = oversampling_weights / min(
-            oversampling_weights[count > 0]
-        )
         self.max_length = max_length
         self.drop_last = drop_last
 
-        # sort by wav_lengths
-        meta_data = (
-            pd.DataFrame(
-                {
-                    "dataset_index": range(len(type_ids)),
-                    "type_id": type_ids,
-                    "wav_length": wav_lengths,
-                }
-            )
-            .sort_values(by=["wav_length"], ascending=False)
-            .reset_index(drop=True)
-        )
+        sorted_indices = np.argsort(wav_lengths)[::-1]
+        sorted_lengths = np.array(wav_lengths)[sorted_indices]
 
-        # binning and compute oversampling num
         self.bins = []
-
         curr_bin_start_index = 0
-        curr_bin_max_item_length = meta_data.loc[0, "wav_length"]
-        for i in range(len(meta_data)):
-            if curr_bin_max_item_length * (i - curr_bin_start_index) > binning_length:
-                bin_data = {
-                    "batch_size": self.max_length // curr_bin_max_item_length,
-                    "num_batches": 0,
-                    "type": [],
-                }
+        curr_bin_max_length = sorted_lengths[0]
 
-                item_num = 0
-                for type_id, weight in enumerate(self.oversampling_weights):
-                    idx_list = (
-                        meta_data.loc[curr_bin_start_index: i - 1]
-                        .loc[meta_data["type_id"] == type_id]
-                        .to_dict(orient="list")["dataset_index"]
-                    )
+        for i in range(1, len(sorted_lengths)):
+            bin_size = i - curr_bin_start_index
+            bin_capacity = curr_bin_max_length * bin_size
 
-                    oversample_num = np.round(len(idx_list) * (weight - 1))
-                    bin_data["type"].append(
-                        {
-                            "idx_list": idx_list,
-                            "oversample_num": oversample_num,
-                        }
-                    )
-                    item_num += len(idx_list) + oversample_num
+            if bin_capacity > binning_length:
+                batch_size = min(
+                    max(1, int(self.max_length // curr_bin_max_length)),
+                    bin_size
+                )
 
-                if bin_data["batch_size"] <= 0:
-                    raise ValueError(
-                        "batch_size <= 0, maybe batch_max_length in training config is too small "
-                        "or max_length in binarizing config is too long."
-                    )
-                num_batches = item_num / bin_data["batch_size"]
+                bin_indices = sorted_indices[curr_bin_start_index:i]
+
                 if self.drop_last:
-                    bin_data["num_batches"] = int(num_batches)
+                    num_batches = bin_size // batch_size
                 else:
-                    bin_data["num_batches"] = int(np.ceil(num_batches))
-                self.bins.append(bin_data)
+                    num_batches = (bin_size + batch_size - 1) // batch_size
+
+                if num_batches > 0:
+                    self.bins.append({
+                        "indices": bin_indices,
+                        "batch_size": batch_size,
+                        "num_batches": num_batches
+                    })
 
                 curr_bin_start_index = i
-                curr_bin_max_item_length = meta_data.loc[i, "wav_length"]
+                curr_bin_max_length = sorted_lengths[i]
 
-        self.len = None
+        if curr_bin_start_index < len(sorted_lengths):
+            bin_size = len(sorted_lengths) - curr_bin_start_index
+            batch_size = min(
+                max(1, int(self.max_length // curr_bin_max_length)),
+                bin_size
+            )
 
-    def __len__(self):
-        if self.len is None:
-            self.len = 0
-            for bin_data in self.bins:
-                self.len += bin_data["num_batches"]
-        return self.len
-
-    def __iter__(self):
-        np.random.shuffle(self.bins)
-
-        for bin_data in self.bins:
-            batch_size = bin_data["batch_size"]
-            num_batches = bin_data["num_batches"]
-
-            idx_list = []
-            for type_id, weight in enumerate(self.oversampling_weights):
-                idx_list_of_type = bin_data["type"][type_id]["idx_list"]
-                oversample_num = bin_data["type"][type_id]["oversample_num"]
-
-                if len(idx_list_of_type) > 0:
-                    idx_list.extend(idx_list_of_type)
-                    oversample_idx_list = np.random.choice(
-                        idx_list_of_type, int(oversample_num)
-                    )
-                    idx_list.extend(oversample_idx_list)
-
-            idx_list = np.random.permutation(idx_list)
+            bin_indices = sorted_indices[curr_bin_start_index:]
 
             if self.drop_last:
-                num_batches = int(num_batches)
-                idx_list = idx_list[: num_batches * batch_size]
+                num_batches = bin_size // batch_size
             else:
-                num_batches = int(np.ceil(num_batches))
-                random_idx = np.random.choice(
-                    idx_list, int(num_batches * batch_size - len(idx_list))
-                )
-                idx_list = np.concatenate([idx_list, random_idx])
+                num_batches = (bin_size + batch_size - 1) // batch_size
 
-            np.random.shuffle(idx_list)
+            if num_batches > 0:
+                self.bins.append({
+                    "indices": bin_indices,
+                    "batch_size": batch_size,
+                    "num_batches": num_batches
+                })
+
+        self.total_batches = sum(bin_info["num_batches"] for bin_info in self.bins)
+
+    def __iter__(self):
+        all_batches = []
+        for bin_info in self.bins:
+            indices = bin_info["indices"]
+            batch_size = bin_info["batch_size"]
+            num_batches = bin_info["num_batches"]
+
+            np.random.shuffle(indices)
 
             for i in range(num_batches):
-                yield idx_list[int(i * batch_size): int((i + 1) * batch_size)]
+                start_idx = i * batch_size
+                end_idx = start_idx + batch_size
+                all_batches.append(indices[start_idx:end_idx].copy())
+
+        np.random.shuffle(all_batches)
+
+        yield from all_batches
+
+    def __len__(self):
+        return self.total_batches
 
 
 def collate_fn(batch):

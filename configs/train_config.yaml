@@ -9,7 +9,6 @@ binary_folder: data/binary_units
 # 开的太高需要有足够内存、cpu
 dataloader_workers: 2
 dataloader_prefetch_factor: 2
-oversampling_weights: [ 1, 1, 1, 1 ] # full_label, weak_label, no_label, evaluate，此项无效、勿修改
 batch_max_length: 200 # unit: seconds，大数据量（10h以上）精标可以考虑400，自行比较效果
 binning_length: 1000 # unit: seconds
 drop_last: False
