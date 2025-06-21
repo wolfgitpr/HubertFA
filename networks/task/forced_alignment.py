@@ -11,6 +11,7 @@ from networks.layer.block.resnet_block import ResidualBasicBlock
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.BinaryEMDLoss import BinaryEMDLoss
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
+from networks.optimizer.muon import Muon_AdamW
 from tools.alignment_decoder import AlignmentDecoder
 from tools.encoder import UnitsEncoder
 from tools.load_wav import load_wav
@@ -71,7 +72,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             if enabled:
                 self.losses_schedulers.append(
                     scheduler_module.GaussianRampUpScheduler(
-                        max_steps=optimizer_config["total_steps"]
+                        max_steps=optimizer_config["total_steps"] * 5
                     )
                 )
             else:
@@ -468,18 +469,12 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.validation_step_outputs[f"tiers-3"].clear()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(
-            [
-                {
-                    "params": self.backbone.parameters(),
-                    "lr": self.optimizer_config["lr"]["backbone"],
-                },
-                {
-                    "params": self.head.parameters(),
-                    "lr": self.optimizer_config["lr"]["head"],
-                },
-            ],
-            weight_decay=self.optimizer_config["weight_decay"],
+        optimizer = Muon_AdamW(
+            self,
+            lr=self.optimizer_config["lr"],
+            muon_args=self.optimizer_config["muon_args"],
+            adamw_args=self.optimizer_config["adamw_args"],
+            weight_decay=self.optimizer_config["muon_args"]["weight_decay"],
         )
         scheduler = {
             "scheduler": lr_scheduler_module.ExponentialLR(
