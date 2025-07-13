@@ -101,5 +101,5 @@ def post_processing(predictions, add_phone="SP"):
                 ]
             )
         except Exception as e:
-            error_log.append([wav_path, e])
+            error_log.append(f"{wav_path}: {e}")
     return res, error_log
