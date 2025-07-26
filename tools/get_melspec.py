@@ -8,24 +8,24 @@ melspec_transform = None
 class MelSpectrogram(torch.nn.Module):
     def __init__(
             self,
-            n_mel_channels,
-            sampling_rate,
-            win_length,
-            hop_length,
-            n_fft=None,
-            mel_fmin=0,
-            mel_fmax=None,
-            clamp=1e-5,
-            device=None,
+            n_mel_channels: int,
+            sampling_rate: int,
+            win_length: int,
+            hop_length: int,
+            n_fft: int = None,
+            mel_fmin: int = 0,
+            mel_fmax: int = None,
+            clamp: float = 1e-5,
+            device: str = None,
     ):
         super().__init__()
-        self.device = device
-        self.n_fft = win_length if n_fft is None else n_fft
-        self.win_length = win_length
-        self.hop_length = hop_length
-        self.sampling_rate = sampling_rate
-        self.n_mel_channels = n_mel_channels
-        self.clamp = clamp
+        self.device: str = device
+        self.n_fft: int = win_length if n_fft is None else n_fft
+        self.win_length: int = win_length
+        self.hop_length: int = hop_length
+        self.sampling_rate: int = sampling_rate
+        self.n_mel_channels: int = n_mel_channels
+        self.clamp: float = clamp
         self.register_buffer("window", torch.hann_window(win_length, device=self.device))
 
         self.mel_scale = torchaudio.transforms.MelScale(
@@ -59,15 +59,15 @@ class MelSpectrogram(torch.nn.Module):
 class MelSpecExtractor(torch.nn.Module):
     def __init__(
             self,
-            n_mels,
-            sample_rate,
-            win_length,
-            hop_length,
-            n_fft,
-            fmin,
-            fmax,
-            clamp,
-            device=None,
+            n_mels: int,
+            sample_rate: int,
+            win_length: int,
+            hop_length: int,
+            n_fft: int,
+            fmin: int,
+            fmax: int,
+            clamp: int,
+            device: str = None,
     ):
         super().__init__()
         if device is None:

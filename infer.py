@@ -14,48 +14,21 @@ from train import LitForcedAlignmentTask
 
 
 @click.command()
-@click.option(
-    "--ckpt",
-    "-c",
-    default=None,
-    required=True,
-    type=str,
-    help="path to the checkpoint",
-)
-@click.option(
-    "--encoder", "-e", default=None, type=str, help="path to the encoder model"
-)
-@click.option(
-    "--folder", "-f", default="segments", type=str, help="path to the input folder"
-)
-@click.option(
-    "--g2p", "-g", default="Dictionary", type=str, help="name of the g2p class"
-)
-@click.option(
-    "--save_confidence",
-    "-sc",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="save confidence.csv",
-)
-@click.option(
-    "--language",
-    "-l",
-    default="zh",
-    type=str,
-    help="language of dictionary.(exp. zh ja en yue)",
-)
-@click.option(
-    "--dictionary",
-    "-d",
-    default=None,
-    type=str,
-    help="(only used when --g2p=='Dictionary') path to the dictionary",
-)
-def main(ckpt, encoder, folder, g2p, save_confidence, language, dictionary):
+@click.option("--ckpt", "-c", default=None, required=True, type=str, help="path to the checkpoint")
+@click.option("--encoder", "-e", default=None, type=str, help="path to the encoder model")
+@click.option("--folder", "-f", default="segments", type=str, help="path to the input folder")
+@click.option("--g2p", "-g", default="Dictionary", type=str, help="name of the g2p class")
+@click.option("--non_speech_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
+@click.option("--save_confidence", "-sc", is_flag=True, default=False, show_default=True, help="save confidence.csv")
+@click.option("--language", "-l", default="zh", type=str, help="language of dictionary.(exp. zh ja en yue)")
+@click.option("--dictionary", "-d", default=None, type=str,
+              help="(only used when --g2p=='Dictionary') path to the dictionary")
+def main(ckpt, encoder, folder, g2p, non_speech_phonemes, save_confidence, language, dictionary):
     model_dir = pathlib.Path(ckpt).parent
     check_configs(model_dir)
+
+    non_speech_phonemes = non_speech_phonemes.split(",") if isinstance(non_speech_phonemes.split(","), list) else [
+        non_speech_phonemes]
 
     if "Dictionary" in g2p:
         if dictionary is None:
@@ -66,7 +39,8 @@ def main(ckpt, encoder, folder, g2p, save_confidence, language, dictionary):
     if not g2p.endswith("G2P"):
         g2p += "G2P"
     g2p_class = getattr(networks.g2p, g2p)
-    grapheme_to_phoneme = g2p_class(**{"language": language, "dictionary": dictionary})
+    grapheme_to_phoneme = g2p_class(
+        **{"language": language, "dictionary": dictionary, "non_speech_phonemes": non_speech_phonemes})
     dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
 
     torch.set_grad_enabled(False)
@@ -80,9 +54,7 @@ def main(ckpt, encoder, folder, g2p, save_confidence, language, dictionary):
     if log:
         print("error:", "\n".join(log))
 
-    exporter = Exporter(predictions)
-    exporter.export(['textgrid'] if not save_confidence else ['textgrid', 'confidence'])
-
+    Exporter(predictions).export(['textgrid', 'confidence'] if save_confidence else ['textgrid'])
     print("Output files are saved to the same folder as the input wav files.")
 
 

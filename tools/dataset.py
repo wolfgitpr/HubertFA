@@ -78,7 +78,6 @@ class MixedDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         if self.h5py_file is None:
             self._open_h5py_file()
-
         item = self.h5py_file["items"][str(index)]
         name = item["name"][()].decode('utf-8')
         input_feature = np.array(item["input_feature"])  # [1,256,T]
@@ -92,18 +91,20 @@ class MixedDataset(torch.utils.data.Dataset):
         melspec = np.array(item["melspec"])
         ph_time = np.array(item["ph_time"])
         ph_time_raw = np.array(item["ph_time_raw"])
-
-        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, label_type, melspec, ph_time, name, ph_seq_raw, ph_time_raw
+        non_speech_target = np.array(item["non_speech_target"])
+        non_speech_intervals = np.array(item["non_speech_intervals"])
+        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, label_type, melspec, ph_time, name, ph_seq_raw, ph_time_raw, non_speech_target, non_speech_intervals
 
 
 class BinningAudioBatchSampler(torch.utils.data.Sampler):
     def __init__(
             self,
-            wav_lengths,
-            max_length=100,
-            binning_length=1000,
-            drop_last=False,
+            wav_lengths: list[int],
+            max_length: int = 100,
+            binning_length: int = 1000,
+            drop_last: bool = False
     ):
+        super().__init__()
         assert len(wav_lengths) > 0
         assert max_length > 0
         assert binning_length > 0
@@ -254,12 +255,20 @@ def collate_fn(batch):
             mode='constant',
             value=0
         )
+        non_speech_target = torch.nn.functional.pad(
+            torch.as_tensor(item[12]),
+            (0, max_len - item[12].shape[-1]),
+            mode='constant',
+            value=0
+        )
+
         ph_seq = item[1]
         ph_mask = torch.as_tensor(item[5])
         label_type = item[6]
         name = item[9]
         ph_seq_raw = item[10]
         ph_time_raw = item[11]
+        non_speech_interval = item[13]
 
         padded_batch.append((
             input_feature,
@@ -274,6 +283,8 @@ def collate_fn(batch):
             name,
             ph_seq_raw,
             ph_time_raw,
+            non_speech_target,
+            non_speech_interval,
         ))
 
     # Concatenate/stack tensors efficiently
@@ -289,6 +300,8 @@ def collate_fn(batch):
     names = [x[9] for x in padded_batch]
     ph_seq_raws = [x[10] for x in padded_batch]
     ph_time_raws = [x[11] for x in padded_batch]
+    non_speech_target = torch.cat([x[12] for x in padded_batch], dim=0)  # (B, N, T)
+    non_speech_intervals = [x[13] for x in padded_batch]  # (B, N, T)
 
     return (
         input_features,
@@ -305,4 +318,6 @@ def collate_fn(batch):
         names,
         ph_seq_raws,
         ph_time_raws,
+        non_speech_target,
+        non_speech_intervals
     )

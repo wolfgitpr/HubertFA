@@ -38,7 +38,7 @@ class ChainedOptimizer(Optimizer):
         defaults = dict(lr=lr, weight_decay=weight_decay)
         super().__init__(params, defaults)
 
-        # Split the params for each optimzier
+        # Split the params for each optimizer
         params_for_optimizers = [[] for _ in optimizer_specs]
         for param_group in self.param_groups:
             params = param_group["params"]

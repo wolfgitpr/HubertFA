@@ -1,23 +1,34 @@
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import pyplot as plt
+
+plt.rcParams['font.sans-serif'] = ['SimSun']
 
 
-def plot_for_valid(
-        melspec,
-        ph_seq,
-        ph_intervals,
-        frame_confidence,
-        ph_frame_prob,
-        ph_frame_id_gt,
-        edge_prob,
-        ph_time_gt=None
-):
+def plot_prob_to_image(melspec,
+                       ph_seq,
+                       ph_intervals,
+                       frame_confidence,
+                       cvnt_prob,
+                       ph_time_gt=None,
+                       label=None, v_min=-8, v_max=2, title=None,
+                       bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
+    if label is None:
+        label = [f'Tensor {i}' for i in range(len(cvnt_prob))]
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1,
+        figsize=(10, 8),
+        gridspec_kw={'height_ratios': [1, 1]}
+    )
+
+    if title:
+        fig.suptitle(title, fontsize=14)
+
     ph_seq = [i.split("/")[-1] for i in ph_seq]
     T = melspec.shape[-1]
     x = np.arange(T)
-    fig, (ax1, ax2) = plt.subplots(2)
 
-    ax1.imshow(melspec[0], origin="lower", aspect="auto", zorder=0)
+    ax1.imshow(melspec, origin="lower", aspect="auto", zorder=0)
 
     y_max = melspec.shape[-2]
     ax1.set_ylim(0, y_max)
@@ -66,29 +77,67 @@ def plot_for_valid(
     ax1.plot(x, frame_confidence * y_scale, 'k-', lw=1, alpha=0.6, zorder=3)
     ax1.fill_between(x, frame_confidence * y_scale, color='k', alpha=0.3, zorder=3)
 
+    legend_elements = [
+        plt.Line2D([0], [0], color='r', lw=2, label='pred'),
+        plt.Line2D([0], [0], color='b', lw=2, label='gt')
+    ]
     ax1.legend(
-        handles=[
-            plt.Line2D([], [], color='r', lw=2, label='pred'),
-            plt.Line2D([], [], color='b', lw=2, label='gt')
-        ],
+        handles=legend_elements,
         loc='upper right',
         fontsize=10,
         framealpha=0.9,
-        ncol=2
+        ncol=1
     )
 
-    ax2.imshow(
-        ph_frame_prob.T,
-        origin="lower",
-        aspect="auto",
-        interpolation="nearest",
-        extent=[0, x[-1], 0, ph_frame_prob.shape[1]]
-    )
-    ax2.plot(x, ph_frame_id_gt, 'r-', lw=1.5, zorder=2)
-    edge_scale = ph_frame_prob.shape[-1]
-    ax2.plot(x, edge_prob * edge_scale, 'k-', lw=1, zorder=2)
-    ax2.fill_between(x, edge_prob * edge_scale, color='k', alpha=0.3, zorder=1)
+    melspec = melspec.T
+    n_frames = melspec.shape[0]
 
-    fig.set_size_inches(13, 7)
-    plt.subplots_adjust(hspace=0, left=0.05, right=0.95, top=0.95, bottom=0.05)
+    time_axis = np.arange(n_frames) * frame_duration
+    time_edges = np.linspace(0, n_frames * frame_duration, n_frames + 1)
+
+    scaled_prob = cvnt_prob * melspec.shape[1]
+    prob_cumsum = np.cumsum(scaled_prob, axis=0)
+
+    for i in range(len(scaled_prob)):
+        if i == 0:
+            ax2.bar(
+                time_axis,
+                scaled_prob[0],
+                width=frame_duration if frame_duration else 1.0,
+                align='edge' if frame_duration else 'center',
+                alpha=0.0,
+                label=label[0]
+            )
+        else:
+            bottom = prob_cumsum[i - 1] if i > 0 else None
+            ax2.bar(
+                time_axis,
+                scaled_prob[i],
+                width=frame_duration if frame_duration else 1.0,
+                align='edge' if frame_duration else 'center',
+                bottom=bottom,
+                label=label[i],
+                alpha=bar_alpha
+            )
+
+    ax2.pcolormesh(
+        time_edges,
+        np.arange(melspec.shape[1] + 1),
+        melspec.T,
+        vmin=v_min,
+        vmax=v_max,
+        alpha=pcolor_alpha,
+        shading='flat'
+    )
+
+    ax1.set_xlabel('Frame Index')
+    ax1.set_ylabel('Mel Bin')
+    ax2.set_xlabel('Time (s)')
+    ax2.set_ylabel('Probability')
+
+    if any(lbl is not None for lbl in label):
+        ax2.legend(loc='upper right', fontsize=9)
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.2)
     return fig

@@ -14,7 +14,7 @@ from transformers import HubertModel
 from networks.task.forced_alignment import LitForcedAlignmentTask
 from tools.config_utils import load_yaml
 
-ONNX_EXPORT_VERSION = 1
+ONNX_EXPORT_VERSION = 2
 
 
 class UnitsAligner(torch.nn.Module):
@@ -181,12 +181,13 @@ def export_fa_model(_fa_path, ckpt_path, _hubert_config, _melspec_config, device
             input_feature,
             _fa_path,
             input_names=['input_feature'],
-            output_names=['ph_frame_logits', 'ph_edge_logits', 'ctc_logits'],
+            output_names=['ph_frame_logits', 'ph_edge_logits', 'ctc_logits', 'cvnt_logits'],
             dynamic_axes={
                 'input_feature': {1: 'n_samples'},
                 'ph_frame_logits': {1: 'n_samples'},  # (T, vocab_size)
                 'ph_edge_logits': {1: 'n_samples'},  # (T)
                 'ctc_logits': {1: 'n_samples'},  # (T, vocab_size)
+                'cvnt_logits': {1: 'n_samples'},  # (N, T)
             },
             opset_version=17
         )

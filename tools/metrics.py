@@ -295,7 +295,10 @@ class BoundaryEditRatioWeighted(Metric):
             self.error += 1
 
     def compute(self):
-        if self.duration == 0.0:
+        if self.duration == 0.0 or self.distance_metric.phonemes == 0.0 or self.counts == 0.0:
+            return 1.0
+        if (1 - self.distance_metric.error_phonemes / self.distance_metric.phonemes) + (
+                self.error / self.counts) * 0.2 == 0.0:
             return 1.0
         return round(
             (self.distance_metric.compute() / self.duration) /

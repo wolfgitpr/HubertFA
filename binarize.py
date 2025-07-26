@@ -38,10 +38,14 @@ class ForcedAlignmentBinarizer:
         self.valid_set_size = binary_config['valid_set_size']
 
         self.extra_phonemes = binary_config['extra_phonemes']
-        self.global_phonemes = binary_config['global_phonemes']
+        self.non_speech_phonemes = binary_config['non_speech_phonemes']
+        assert len(self.non_speech_phonemes) > 1, "non_speech_phonemes must have at least one phoneme."
+
+        self.non_speech_phonemes_dict = {"None": 0}
+
         self.silent_phonemes = binary_config['silent_phonemes']
         self.melspec_config = binary_config['melspec_config']
-        self.ignored_phonemes = binary_config['global_phonemes'] + binary_config['silent_phonemes']
+        self.ignored_phonemes = binary_config['non_speech_phonemes'] + binary_config['silent_phonemes']
 
         self.language_prefix = binary_config['language_prefix']
         self.dictionaries = binary_config['dictionaries']
@@ -54,7 +58,6 @@ class ForcedAlignmentBinarizer:
         self.frame_length = self.melspec_config["hop_length"] / self.sample_rate
 
         self.hop_size = binary_config['melspec_config']["hop_length"]
-
         self.hubert_channel = binary_config['hubert_config']["channel"]
 
     def get_vocab(self):
@@ -129,20 +132,24 @@ class ForcedAlignmentBinarizer:
             if ph not in vocab:
                 vocab[ph] = len(vocab)
 
+        for i, phone in enumerate(self.non_speech_phonemes):
+            self.non_speech_phonemes_dict[phone] = i + 1
+
         vocab_dict = {"vocab": vocab,
                       "vocab_size": len(dataset_phonemes),
                       "language_prefix": self.language_prefix,
                       "silent_phonemes": list({"SP", *self.silent_phonemes}),
-                      "global_phonemes": self.global_phonemes,
+                      "non_speech_phonemes": self.non_speech_phonemes,
+                      "non_speech_phonemes_dict": self.non_speech_phonemes_dict,
                       "merged_phoneme_groups": self.merged_phoneme_groups,
                       "dictionaries": {k: os.path.basename(v) for k, v in self.dictionaries.items()},
                       }
 
         print(f"vocab_size is {len(dataset_phonemes)}:")
         print(
-            f"+ {[x for x in dataset_phonemes if x not in dict_phonemes and x not in self.silent_phonemes and x not in self.global_phonemes]}")
+            f"+ {[x for x in dataset_phonemes if x not in dict_phonemes and x not in self.silent_phonemes and x not in self.non_speech_phonemes]}")
         print(
-            f"- {[x for x in dict_phonemes if x not in dataset_phonemes and x not in self.silent_phonemes and x not in self.global_phonemes]}")
+            f"- {[x for x in dict_phonemes if x not in dataset_phonemes and x not in self.silent_phonemes and x not in self.non_speech_phonemes]}")
 
         return vocab_dict
 
@@ -280,6 +287,33 @@ class ForcedAlignmentBinarizer:
             return None, None, None, None, None
         return ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time
 
+    def make_non_speech_ph_data(self, T, ph_id_seq, ph_duration):
+        if len(ph_id_seq) == 0:
+            return None, None
+
+        ph_id_seq = np.array(ph_id_seq, dtype="int32")
+        ph_dur = np.array(ph_duration, dtype="float32")
+
+        ph_time = np.concatenate(([0], ph_dur)).cumsum()
+        ph_frame = ph_time / self.frame_length
+
+        ph_frame_int = np.round(ph_frame).astype("int32")
+        ph_frame_int = np.clip(ph_frame_int, 0, T)
+
+        num_phones = len(self.vocab.keys()) + 1
+        non_speech_target = np.zeros((num_phones, T), dtype="int32")
+        non_speech_intervals = []
+
+        for i, ph_id in enumerate(ph_id_seq):
+            start_frame = ph_frame_int[i]
+            end_frame = ph_frame_int[i + 1]
+            if start_frame < end_frame:
+                non_speech_target[ph_id, start_frame:end_frame] = 1
+                if ph_id > 0:
+                    non_speech_intervals.append([start_frame, end_frame])
+
+        return non_speech_target, non_speech_intervals
+
     def binarize(
             self,
             prefix: str,
@@ -347,6 +381,29 @@ class ForcedAlignmentBinarizer:
                     f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it."
                 )
                 return None
+            n_frames = waveform.size(-1) // self.hop_size + 1
+
+            label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
+            if label_type_id >= 2:
+                if len(_item.ph_dur) != len(_item.ph_id_seq): label_type_id = 1
+                if not _item.ph_id_seq: label_type_id = 0
+
+            ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
+                self.vocab, n_frames, label_type_id, _item.ph_id_seq, _item.ph_dur
+            )
+            if ph_id_seq is None:
+                print(f"Skipping {wav_path}, make ph data failed.")
+                return None
+
+            non_speech_target, non_speech_intervals = self.make_non_speech_ph_data(n_frames,
+                                                                                   _item.non_speech_phonemes_id_seq,
+                                                                                   _item.ph_dur)  # [B, C, T]
+            if non_speech_target is None:
+                print(f"Skipping {wav_path}, make non_speech_ph data failed.")
+                return None
+
+            non_speech_target = np.array([non_speech_target])
+            non_speech_intervals = np.array([non_speech_intervals])
 
             npy_loaded = False
             # units encode
@@ -360,20 +417,8 @@ class ForcedAlignmentBinarizer:
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
             B, T, C = units.shape
-            assert T > 0, f"Length of unit {T} must be greater than 0."
+            assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
             assert C == self.hubert_channel, f"Item {wav_path} has unexpect channel of {C}, which should be {self.hubert_channel}."
-
-            label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
-            if label_type_id >= 2:
-                if len(_item.ph_dur) != len(_item.ph_id_seq): label_type_id = 1
-                if not _item.ph_id_seq: label_type_id = 0
-
-            ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
-                self.vocab, T, label_type_id, _item.ph_id_seq, _item.ph_dur
-            )
-            if ph_id_seq is None:
-                print(f"Skipping {wav_path}, make ph data failed.")
-                return None
 
             return {
                 'name': str(_item["name"]),
@@ -388,6 +433,8 @@ class ForcedAlignmentBinarizer:
                 'ph_seq_raw': _item.ph_seq,
                 'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0],
                 "label_type": label_type_id,
+                "non_speech_target": non_speech_target.astype("int32"),
+                "non_speech_intervals": non_speech_intervals.astype("int32"),
                 "wav_length": wav_length
             }
 
@@ -444,6 +491,8 @@ class ForcedAlignmentBinarizer:
                      else f"{language}/{ph}" for ph in ph_seq])
             )
             df["ph_id_seq"] = df["ph_seq"].apply(lambda ph_seq: ([self.vocab['vocab'][ph] for ph in ph_seq]))
+            df["non_speech_phonemes_id_seq"] = df["ph_seq"].apply(
+                lambda ph_seq: ([self.vocab['non_speech_phonemes_dict'].get(ph, 0) for ph in ph_seq]))
             meta_data_df = pd.concat([meta_data_df, df]) if len(meta_data_df) >= 1 else df
 
         meta_data_df.reset_index(drop=True, inplace=True)

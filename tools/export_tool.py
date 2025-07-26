@@ -11,26 +11,16 @@ class Exporter:
 
     def save_textgrids(self):
         print("Saving TextGrids...")
-
-        for (
-                wav_path,
-                wav_length,
-                confidence,
-                ph_seq,
-                ph_intervals,
-                word_seq,
-                word_intervals,
-        ) in self.predictions:
+        for wav_path, wav_length, words, confidence in self.predictions:
             wav_path = pathlib.Path(wav_path)
             tg = textgrid.TextGrid()
-            word_tier = textgrid.IntervalTier(name="words")
-            ph_tier = textgrid.IntervalTier(name="phones")
+            word_tier = textgrid.IntervalTier(name="words", minTime=0.0)
+            ph_tier = textgrid.IntervalTier(name="phones", minTime=0.0)
 
-            for word, (start, end) in zip(word_seq, word_intervals):
-                word_tier.add(start, end, word)
-
-            for ph, (start, end) in zip(ph_seq, ph_intervals):
-                ph_tier.add(minTime=float(start), maxTime=end, mark=ph)
+            for word in words:
+                word_tier.add(minTime=word.start, maxTime=word.end, mark=word.text)
+                for phoneme in word.phonemes:
+                    ph_tier.add(minTime=max(0, phoneme.start), maxTime=phoneme.end, mark=phoneme.text)
 
             tg.append(word_tier)
             tg.append(ph_tier)
@@ -45,18 +35,8 @@ class Exporter:
 
     def save_confidence_fn(self):
         print("saving confidence...")
-
         folder_to_data = {}
-
-        for (
-                wav_path,
-                wav_length,
-                confidence,
-                ph_seq,
-                ph_intervals,
-                word_seq,
-                word_intervals,
-        ) in self.predictions:
+        for wav_path, wav_length, words, confidence in self.predictions:
             folder = wav_path.parent
             if folder in folder_to_data:
                 curr_data = folder_to_data[folder]
@@ -69,7 +49,6 @@ class Exporter:
             name = wav_path.with_suffix("").name
             curr_data["name"].append(name)
             curr_data["confidence"].append(confidence)
-
             folder_to_data[folder] = curr_data
 
         for folder, data in folder_to_data.items():
@@ -81,6 +60,5 @@ class Exporter:
 
     def export(self, out_formats):
         self.save_textgrids()
-
         if "confidence" in out_formats:
             self.save_confidence_fn()

@@ -1,7 +1,8 @@
 import numba
 import numpy as np
 
-from tools.plot import plot_for_valid
+from tools.align_word import Phoneme, Word, WordList
+from tools.plot import plot_prob_to_image
 
 
 def sigmoid(x):
@@ -20,8 +21,9 @@ def log_softmax(x, axis=-1):
 
 
 class AlignmentDecoder:
-    def __init__(self, vocab, melspec_config):
+    def __init__(self, vocab, class_names, melspec_config):
         self.vocab = vocab
+        self.non_speech_phs: list[str] = class_names
         self.melspec_config = melspec_config
         self.frame_length = self.melspec_config["hop_length"] / (self.melspec_config["sample_rate"])
 
@@ -31,22 +33,28 @@ class AlignmentDecoder:
         self.ph_idx_seq = None
         self.ph_frame_pred = None
         self.ph_time_int_pred = None
+
+        self.ph_seq_pred = None
         self.ph_intervals_pred = None
 
+        self.cvnt_probs = None
         self.edge_prob = None
-        self.ph_pred_seq = None
+        self.pred_words = None
         self.frame_confidence = None
 
     def decode(self,
                ph_frame_logits,
                ph_edge_logits,
-               ctc_logits,
+               cvnt_logits,
                wav_length: float | None,
                ph_seq: list[str],
                word_seq: list[str] = None,
                ph_idx_to_word_idx: list[int] = None,
                ignore_sp: bool = True,
+               non_speech_phonemes: list[str] = None,
                ):
+        if non_speech_phonemes is None:
+            non_speech_phonemes: list[str] = self.non_speech_phs[1:]
         ph_seq_id = np.array([self.vocab["vocab"][ph] for ph in ph_seq])
         self.ph_seq_id = ph_seq_id
 
@@ -64,30 +72,19 @@ class AlignmentDecoder:
                 (wav_length * self.melspec_config["sample_rate"] + 0.5) / self.melspec_config["hop_length"])
             ph_frame_logits = ph_frame_logits[:, :num_frames, :]
             ph_edge_logits = ph_edge_logits[:, :num_frames]
-            ctc_logits = ctc_logits[:, :num_frames, :]
+            cvnt_logits = cvnt_logits[:, :, :num_frames]
 
-        # [1, 1, vocab_size] unused phonemes inf
-        ph_frame_logits_adjusted = ph_frame_logits - ph_mask[np.newaxis, np.newaxis, :]
-
-        # [T, vocab_size]
-        ph_frame_pred = softmax(ph_frame_logits_adjusted, axis=-1)[0].astype("float32")
-
-        # [T, vocab_size]
-        ph_prob_log = log_softmax(ph_frame_logits_adjusted, axis=-1)[0].astype("float32")
-
-        # [T]
-        ph_edge_pred = np.clip(sigmoid(ph_edge_logits), 0.0, 1.0)[0].astype("float32")
+        ph_frame_logits_adjusted = ph_frame_logits - ph_mask[np.newaxis, np.newaxis, :]  # [1, 1, vocab_size]
+        ph_frame_pred = softmax(ph_frame_logits_adjusted, axis=-1)[0].astype("float32")  # [T, vocab_size]
+        ph_prob_log = log_softmax(ph_frame_logits_adjusted, axis=-1)[0].astype("float32")  # [T, vocab_size]
+        ph_edge_pred = np.clip(sigmoid(ph_edge_logits), 0.0, 1.0)[0].astype("float32")  # [T]
         self.ph_frame_pred = ph_frame_pred
-
-        # [1, T, vocab_size]
-        self.ctc_logits = ctc_logits # (ctc_logits.squeeze(0) - ph_mask)
 
         T, vocab_size = ph_frame_pred.shape
 
         # decode
         edge_diff = np.concatenate((np.diff(ph_edge_pred, axis=0), [0]), axis=0)  # [T]
         edge_prob = (ph_edge_pred + np.concatenate(([0], ph_edge_pred[:-1]))).clip(0, 1)  # [T]
-
         self.edge_prob = edge_prob
 
         (
@@ -102,62 +99,66 @@ class AlignmentDecoder:
         total_confidence = np.exp(np.mean(np.log(frame_confidence + 1e-6)) / 3)
 
         self.ph_idx_seq = ph_idx_seq
-        self.ph_time_int_pred = ph_time_int_pred
+        self.ph_time_int_pred = np.array(ph_time_int_pred, dtype="int32")
         self.frame_confidence = frame_confidence
 
         # postprocess
-        ph_time_fractional = (edge_diff[ph_time_int_pred] / 2).clip(-0.5, 0.5)
+        ph_time_fractional = (edge_diff[self.ph_time_int_pred] / 2).clip(-0.5, 0.5)
         ph_time_pred = self.frame_length * (
             np.concatenate(
                 [
-                    ph_time_int_pred.astype("float32") + ph_time_fractional,
+                    self.ph_time_int_pred.astype("float32") + ph_time_fractional,
                     [T],
                 ]
             )
         )
         ph_intervals = np.stack([ph_time_pred[:-1], ph_time_pred[1:]], axis=1)
 
-        ph_seq_pred = []
-        ph_intervals_pred = []
-        word_seq_pred = []
-        word_intervals_pred = []
+        word = None
+        words: WordList = WordList()
 
+        ph_seq_decoded = []
         word_idx_last = -1
         for i, ph_idx in enumerate(ph_idx_seq):
+            ph_seq_decoded.append(ph_seq[ph_idx])
             # ph_idx只能用于两种情况：ph_seq和ph_idx_to_word_idx
             if ph_seq[ph_idx] == "SP" and ignore_sp:
                 continue
-            ph_seq_pred.append(ph_seq[ph_idx])
-            ph_intervals_pred.append(ph_intervals[i, :])
+            phoneme = Phoneme(ph_intervals[i, 0], ph_intervals[i, 1], ph_seq[ph_idx])
 
             word_idx = ph_idx_to_word_idx[ph_idx]
             if word_idx == word_idx_last:
-                word_intervals_pred[-1][1] = ph_intervals[i, 1]
+                word.append_phoneme(phoneme)
             else:
-                word_seq_pred.append(word_seq[word_idx])
-                word_intervals_pred.append([ph_intervals[i, 0], ph_intervals[i, 1]])
+                word = Word(ph_intervals[i, 0], ph_intervals[i, 1], word_seq[word_idx])
+                word.add_phoneme(phoneme)
+                words.append(word)
                 word_idx_last = word_idx
-        ph_seq_pred = np.array(ph_seq_pred)
-        ph_intervals_pred = np.array(ph_intervals_pred).clip(min=0, max=None)
-        word_seq_pred = np.array(word_seq_pred)
-        word_intervals_pred = np.array(word_intervals_pred).clip(min=0, max=None)
 
-        self.ph_pred_seq = ph_seq_pred
-        self.ph_intervals_pred = ph_intervals_pred
+        ph_time_pred_int = np.concatenate([self.ph_time_int_pred, [T]])
+        ph_intervals_int = np.stack([ph_time_pred_int[:-1], ph_time_pred_int[1:]], axis=1)
+        self.ph_seq_pred = words.phonemes()
+        self.ph_intervals_pred = words.intervals()
 
-        return ph_seq_pred, ph_intervals_pred, word_seq_pred, word_intervals_pred, total_confidence
+        speech_phonemes_mask = np.zeros(T, dtype=bool)
+        for i, (start, end) in enumerate(ph_intervals_int):
+            if ph_seq_decoded[i] != "SP":
+                speech_phonemes_mask[start:end] = True
 
-    def ctc(self):
-        ctc = np.argmax(self.ctc_logits, axis=-1)
-        ctc_index = np.concatenate([[0], ctc])
-        ctc_index = (ctc_index[1:] != ctc_index[:-1]) * ctc != 0
-        ctc = ctc[ctc_index]
-        return np.array([ph_id for ph_id in ctc if ph_id != 0])
+        cvnt_logits[:, 1:, speech_phonemes_mask] = 0
+        self.cvnt_probs = softmax(cvnt_logits, axis=1)[0]
+        for ph in non_speech_phonemes:
+            i = self.non_speech_phs.index(ph)
+            tag_words: list[Word] = self.non_speech_words(self.cvnt_probs[i], tag=ph)
+            for tag_word in tag_words:
+                words.add_AP(tag_word)
+        self.pred_words = words
+        return words, total_confidence
 
     def plot(self, melspec, ph_time_gt=None):
         ph_idx_frame = np.zeros(self.ph_frame_pred.shape[0]).astype("int32")
         ph_intervals_pred_int = (
-            (self.ph_intervals_pred / self.frame_length).round().astype("int32")
+            (np.array(self.ph_intervals_pred) / self.frame_length).round().astype("int32")
         )
         if ph_time_gt is not None:
             ph_time_gt_int = (
@@ -169,15 +170,15 @@ class AlignmentDecoder:
         for ph_idx, ph_time in zip(self.ph_idx_seq, self.ph_time_int_pred):
             ph_idx_frame[ph_time] += ph_idx - last_ph_idx
             last_ph_idx = ph_idx
-        ph_idx_frame = np.cumsum(ph_idx_frame)
-        return plot_for_valid(melspec.cpu().numpy(),
-                              self.ph_pred_seq,
-                              ph_intervals_pred_int,
-                              self.frame_confidence,
-                              self.ph_frame_pred[:, self.ph_seq_id],
-                              ph_idx_frame,
-                              self.edge_prob,
-                              ph_time_gt_int)
+        return plot_prob_to_image(melspec=melspec,
+                                  ph_seq=self.pred_words.phonemes(),
+                                  ph_intervals=ph_intervals_pred_int,
+                                  frame_confidence=self.frame_confidence,
+                                  cvnt_prob=self.cvnt_probs,
+                                  ph_time_gt=ph_time_gt_int,
+                                  label=self.non_speech_phs,
+                                  frame_duration=self.frame_length,
+                                  )
 
     @staticmethod
     @numba.jit
@@ -293,8 +294,44 @@ class AlignmentDecoder:
             )
         )
 
-        return (
-            np.array(ph_idx_seq, dtype="int32"),
-            np.array(ph_time_int, dtype="int32"),
-            np.array(frame_confidence, dtype="float32"),
-        )
+        return ph_idx_seq, ph_time_int, frame_confidence
+
+    def non_speech_words(self, prob, threshold=0.5, max_gap=5, ap_threshold=10, tag=""):
+        """
+        Find segments in the array where values are mostly above a given threshold.
+
+        :param tag: phoneme text
+        :param ap_threshold: minimum breathing time, unit: number of samples
+        :param prob: numpy array of probabilities
+        :param threshold: threshold value to consider a segment
+        :param max_gap: maximum allowed gap of values below the threshold within a segment
+        :return: list of tuples (start_index, end_index) of segments
+        """
+        words = []
+        start = None
+        gap_count = 0
+
+        for i in range(len(prob)):
+            if prob[i] >= threshold:
+                if start is None:
+                    start = i
+                gap_count = 0
+            else:
+                if start is not None:
+                    if gap_count < max_gap:
+                        gap_count += 1
+                    else:
+                        end = i - gap_count - 1
+                        if end > start and (end - start) >= ap_threshold:
+                            word = Word(start * self.frame_length, end * self.frame_length, tag)
+                            word.add_phoneme(Phoneme(start * self.frame_length, end * self.frame_length, tag))
+                            words.append(word)
+                        start = None
+                        gap_count = 0
+
+        # Handle the case where the array ends with a segment
+        if start is not None and (len(prob) - start) >= ap_threshold:
+            word = Word(start * self.frame_length, (len(prob) - 1) * self.frame_length, tag)
+            word.add_phoneme(Phoneme(start * self.frame_length, (len(prob) - 1) * self.frame_length, tag))
+            words.append(word)
+        return words

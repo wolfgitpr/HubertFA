@@ -1,9 +1,11 @@
+from typing import List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from torch.nn import Module, Parameter, Embedding
-from typing import List
+from torch.nn import Parameter
+
 from .chained_optimizer import ChainedOptimizer, OptimizerSpec
 
 
@@ -18,13 +20,13 @@ def get_bf16_support_map():
         return bf16_support_map
 
     for i in range(device_count):
-        device = torch.device(f'cuda:{i}')       
+        device = torch.device(f'cuda:{i}')
         major, minor = torch.cuda.get_device_capability(device)
         bf16_support_map[device] = (major >= 8)
-        
+
     return bf16_support_map
-    
-    
+
+
 def zeropower_via_newtonschulz5(G: Tensor, steps: int, use_bf16: bool) -> Tensor:
     """
     Newton-Schulz iteration to compute the zeroth power / orthogonalization of G. We opt to use a
@@ -35,8 +37,8 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int, use_bf16: bool) -> Tensor
     where S' is diagonal with S_{ii}' ~ Uniform(0.5, 1.5), which turns out not to hurt model
     performance at all relative to UV^T, where USV^T = G is the SVD.
     """
-    assert G.ndim == 3 # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
-    a, b, c = (3.4445, -4.7750,  2.0315)
+    assert G.ndim == 3  # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
+    a, b, c = (3.4445, -4.7750, 2.0315)
     if use_bf16:
         X = G.bfloat16()
     else:
@@ -46,13 +48,13 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int, use_bf16: bool) -> Tensor
 
     # Ensure spectral norm is at most 1
     X = F.normalize(X, p=2.0, dim=(-2, -1), eps=1e-7)
-    
+
     # Perform the NS iterations
     for _ in range(steps):
         A = X @ X.mT
         B = torch.baddbmm(A, A, A, beta=b, alpha=c)
         X = torch.baddbmm(X, B, X, beta=a, alpha=1)
-    
+
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X.to(G)
@@ -85,7 +87,7 @@ class Muon(torch.optim.Optimizer):
         defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum, nesterov=nesterov, ns_steps=ns_steps)
         super().__init__(params, defaults)
         self.bf16_support_map = get_bf16_support_map()
-        
+
     @torch.no_grad()
     def step(self, closure=None):
         for group in self.param_groups:
@@ -147,6 +149,7 @@ class Muon_AdamW(ChainedOptimizer):
         callback = None
         if verbose:
             callback = lambda p, spec_idx: print(
-            f"Adding param {p.shape} to optimizer{spec_idx} {str(specs[spec_idx].class_type)}"
-        )
-        super().__init__(model.parameters(), specs, lr=lr, weight_decay=weight_decay, optimizer_selection_callback=callback)
+                f"Adding param {p.shape} to optimizer{spec_idx} {str(specs[spec_idx].class_type)}"
+            )
+        super().__init__(model.parameters(), specs, lr=lr, weight_decay=weight_decay,
+                         optimizer_selection_callback=callback)

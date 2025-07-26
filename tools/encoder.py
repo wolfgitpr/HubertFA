@@ -2,11 +2,8 @@ import os.path
 import pathlib
 
 import torch
-from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 from torchaudio.transforms import Resample
 from transformers import Wav2Vec2FeatureExtractor, HubertModel
-
-from networks.hubert.model import HubertSoft
 
 
 class UnitsEncoder(torch.nn.Module):
@@ -22,9 +19,6 @@ class UnitsEncoder(torch.nn.Module):
             encoder_ckpt = hubert_config.get("model_path", None)
 
         is_loaded_encoder = False
-        if self.encoder == 'hubertsoft':
-            self.model = Audio2HubertSoft(encoder_ckpt, device=device)
-            is_loaded_encoder = True
         if self.encoder == 'cnhubert':
             self.model = Audio2CNHubert(encoder_ckpt, device=device)
             is_loaded_encoder = True
@@ -59,24 +53,6 @@ class UnitsEncoder(torch.nn.Module):
         index = torch.clamp(torch.round(ratio * torch.arange(n_frames).to(self.device)).long(), max=units.size(1) - 1)
         units_aligned = torch.gather(units, 1, index.unsqueeze(0).unsqueeze(-1).repeat([1, 1, units.size(-1)]))
         return units_aligned  # [B, T, C]
-
-
-class Audio2HubertSoft(torch.nn.Module):
-    def __init__(self, path, device='cpu'):
-        super().__init__()
-        print(' [Encoder Model] HuBERT Soft')
-        self.hubert = HubertSoft().to(device)
-        print(' [Loading] ' + path)
-        checkpoint = torch.load(path)["hubert"]
-        consume_prefix_in_state_dict_if_present(checkpoint, "module.")
-        self.hubert.load_state_dict(checkpoint)
-        self.hubert.eval()
-
-    def forward(self,
-                audio):  # B, T
-        with torch.inference_mode():
-            units = self.hubert.units(audio.unsqueeze(1))
-            return units  # [1, T, C]
 
 
 class Audio2CNHubert(torch.nn.Module):
