@@ -27,14 +27,16 @@ def main(ckpt, encoder, folder, g2p, non_speech_phonemes, save_confidence, langu
     model_dir = pathlib.Path(ckpt).parent
     check_configs(model_dir)
 
-    non_speech_phonemes = non_speech_phonemes.split(",") if isinstance(non_speech_phonemes.split(","), list) else [
-        non_speech_phonemes]
+    vocab = load_yaml(model_dir / "vocab.yaml")
+    non_speech_phonemes = [ph.strip() for ph in non_speech_phonemes.split(",") if ph.strip()]
 
     if "Dictionary" in g2p:
         if dictionary is None:
-            vocab = load_yaml(model_dir / "vocab.yaml")
             dictionary = model_dir / vocab["dictionaries"].get(language, "")
         assert os.path.exists(dictionary), f"{pathlib.Path(dictionary).absolute()} does not exist"
+
+    assert set(non_speech_phonemes).issubset(set(vocab['non_speech_phonemes'])), \
+        f"The non_speech_phonemes contain elements that are not included in the vocab."
 
     if not g2p.endswith("G2P"):
         g2p += "G2P"

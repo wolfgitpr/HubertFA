@@ -25,7 +25,7 @@ def fill_small_gaps(words_list: WordList, wav_length):
         words_list[0].start = 0
 
     if words_list[0].start > 0:
-        if abs(words_list[0].start) < MIN_SP_LENGTH < words_list[0].dur():
+        if abs(words_list[0].start) < MIN_SP_LENGTH < words_list[0].dur:
             words_list[0].move_start(0)
 
     if words_list[-1].end >= wav_length - MIN_SP_LENGTH:

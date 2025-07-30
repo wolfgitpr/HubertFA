@@ -1,5 +1,6 @@
 from bisect import bisect_left
 
+import numpy as np
 import textgrid as tg
 
 
@@ -239,14 +240,16 @@ class BoundaryEditDistance(Metric):
             pred = pred_lcs
             target = target_lcs
 
-        self.phonemes += len(target)
-
         for i in range(len(pred)):
             if pred[i].mark != target[i].mark:
                 return False
 
-        for pred_point, target_point in zip(pred, target):
-            self.distance += abs(pred_point.time - target_point.time)
+        pred_times = np.array([p.time for p in pred])
+        target_times = np.array([t.time for t in target])
+        time_diffs = np.abs(pred_times - target_times)
+
+        self.distance += np.sum(time_diffs)
+        self.phonemes += len(target_times)
         return True
 
     def compute(self):

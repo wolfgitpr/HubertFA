@@ -12,14 +12,8 @@ def plot_prob_to_image(melspec,
                        ph_time_gt=None,
                        label=None, v_min=-8, v_max=2, title=None,
                        bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
-    if label is None:
-        label = [f'Tensor {i}' for i in range(len(cvnt_prob))]
-
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1,
-        figsize=(10, 8),
-        gridspec_kw={'height_ratios': [1, 1]}
-    )
+    label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
 
     if title:
         fig.suptitle(title, fontsize=14)

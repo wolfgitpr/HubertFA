@@ -120,7 +120,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.CTC_GHM_loss_fn = CTCGHMLoss(alpha=1 - 1e-3)
 
         self.unitsEncoder = None
-
         self.decoder = AlignmentDecoder(self.vocab, self.class_names, self.melspec_config)
 
         # validation_step_outputs
@@ -200,7 +199,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_edge_logits.float().cpu().numpy(),
             cvnt_logits.float().cpu().numpy(),
             wav_length, ph_seq, word_seq, ph_idx_to_word_idx,
-            non_speech_phonemes
+            non_speech_phonemes=non_speech_phonemes
         )
 
         words.clear_language_prefix()
@@ -533,7 +532,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_frame_logits.float().cpu().numpy(),
             ph_edge_logits.float().cpu().numpy(),
             cvnt_logits.float().cpu().numpy(),
-            None, ph_seq_g2p, None, None, False
+            None, ph_seq_g2p, None, None, False,
+            non_speech_phonemes=self.vocab["non_speech_phonemes"][1:]
         )
 
         if dataloader_idx == 0 or self.config.get("get_evaluate_loss", False):

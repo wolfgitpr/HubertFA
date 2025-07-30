@@ -42,15 +42,19 @@ def create_session(onnx_path):
 def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, language, dictionary):
     onnx_folder = pathlib.Path(onnx_folder)
     check_configs(onnx_folder)
+    with open(onnx_folder / 'VERSION', 'r', encoding='utf-8') as f:
+        assert int(f.readline().strip()) >= 2, f"onnx model version must be greater than 2."
 
-    non_speech_phonemes = non_speech_phonemes.split(",") if isinstance(non_speech_phonemes.split(","), list) else [
-        non_speech_phonemes]
+    vocab = load_yaml(onnx_folder / "vocab.yaml")
+    non_speech_phonemes = [ph.strip() for ph in non_speech_phonemes.split(",") if ph.strip()]
 
     if "Dictionary" in g2p:
         if dictionary is None:
-            vocab = load_yaml(onnx_folder / "vocab.yaml")
             dictionary = onnx_folder / vocab["dictionaries"].get(language, "")
         assert os.path.exists(dictionary), f"{pathlib.Path(dictionary).absolute()} does not exist"
+
+    assert set(non_speech_phonemes).issubset(set(vocab['non_speech_phonemes'])), \
+        f"The non_speech_phonemes contain elements that are not included in the vocab."
 
     if not g2p.endswith("G2P"):
         g2p += "G2P"
@@ -92,7 +96,7 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, langua
             results['ph_edge_logits'],
             results['cvnt_logits'],
             wav_length, ph_seq, word_seq, ph_idx_to_word_idx,
-            non_speech_phonemes
+            non_speech_phonemes=non_speech_phonemes
         )
 
         words.clear_language_prefix()

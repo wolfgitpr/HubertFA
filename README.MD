@@ -4,9 +4,9 @@
 
 ## 简介
 
-专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。基于[SOFA](https://github.com/qiuqiao/SOFA)优化，支持多种音频编码器。
+专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。
 
-⚠️ 建议使用[chinese-hubert](https://github.com/TencentGameMate/chinese_speech_pretrain)作编码器，效果更佳。
+基于[SOFA](https://github.com/qiuqiao/SOFA)和[FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler)优化，支持对齐音素及自动识别非发声音素（如呼吸）。
 
 [模型分享说明](https://github.com/wolfgitpr/HubertFA/discussions/2)
 
@@ -67,6 +67,7 @@
     - `--onnx_folder`：模型权重文件夹；
     - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
     - `--language`：指定语种，zh ja en yue（默认为`zh`）；
+    - `--non_speech_phonemes`：自动推理非发声音素（默认为`AP`，可选`AP,EP`）
     - `--save_confidence`：（可选）输出置信度；
     - `--dictionary`：（可选）字典文件；
 
@@ -80,6 +81,7 @@
     - `--ckpt`：模型权重文件夹；
     - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
     - `--language`：指定语种，zh ja en yue（默认为`zh`）；
+    - `--non_speech_phonemes`：自动推理非发声音素（默认为`AP`，可选`AP,EP`）
     - `--encoder`：（可选）音频编码器的路径，如Chinese hubert的文件夹
     - `--save_confidence`：（可选）输出置信度；
     - `--dictionary`：（可选）字典文件；
@@ -116,18 +118,6 @@
    `weak_label`中的`transcriptions.csv`无需拥有`ph_dur`这一个`column`；
 
 2. 修改配置
-
-   下表仅为同数据集下各encoder的经验评分，不做严格参考。
-
-   |        encoder        | [hubert-soft](https://github.com/bshall/hubert/releases/download/v0.2/hubert-soft-35d9f29f.pt) | [cnhubert](https://huggingface.co/TencentGameMate/chinese-hubert-base) |
-   |:---------------------:|:----------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------:|
-   |       encoder体积       |                                              360m                                              |                                  360m                                  |
-   | 预处理体积 44.1k 16bit为基准  |                                             ~2.3x                                              |                                  ~3x                                   |
-   |         模型体积          |                                               同前                                               |                                   同前                                   |
-   | 最小编辑距离(标注风格影响，不等价于效果) |                                              0.09                                              |                                 0.075                                  |
-   |         标注风格          |                                       尽量短（仅覆盖能识别最短发音部分）                                        |                                   同前                                   |
-   |        channel        |                                              256                                               |                                  768                                   |
-   |      model_path       |                                          /xxx/xxx.pt                                           |                              xxx/cnhubert                              |
 
    使用 `make_data_config.py` 自动扫描数据文件夹生成配置文件：
 
@@ -188,6 +178,6 @@ python evaluate.py <PRED_DIR> <TARGET_DIR> -r
 # 参考项目
 
 + [SOFA](https://github.com/qiuqiao/SOFA)
++ [FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler)
 + [DDSP-SVC](https://github.com/yxlllc/DDSP-SVC)
-+ [hubert](https://github.com/bshall/hubert)
 + [chinese-hubert](https://github.com/TencentGameMate/chinese_speech_pretrain)

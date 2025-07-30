@@ -1,15 +1,22 @@
 import warnings
+from dataclasses import dataclass, field
 
 
+@dataclass
 class Phoneme:
-    def __init__(self, start, end, text):
-        self.start = start
-        self.end = end
-        self.text = text
+    start: float
+    end: float
+    text: str
 
 
+@dataclass
 class Word:
-    def __init__(self, start, end, text, init_phoneme=False):
+    start: float
+    end: float
+    text: str
+    phonemes: list[Phoneme] = field(default_factory=list)
+
+    def __init__(self, start: float, end: float, text: str, init_phoneme: bool = False):
         self.start = start
         self.end = end
         self.text = text
@@ -17,7 +24,8 @@ class Word:
         if init_phoneme:
             self.phonemes.append(Phoneme(start, end, text))
 
-    def dur(self):
+    @property
+    def dur(self) -> float:
         return self.end - self.start
 
     def add_phoneme(self, phoneme):
@@ -106,22 +114,20 @@ class WordList(list):
                     ap.move_start(word.end)
                 if word.start < ap.end <= word.end:
                     ap.move_end(word.start)
-            if ap.start < ap.end and ap.dur() > min_dur and not self.overlapping_words(ap):
+            if ap.start < ap.end and ap.dur > min_dur and not self.overlapping_words(ap):
                 self.append(ap)
                 self.sort(key=lambda w: w.start)
 
+    @property
     def phonemes(self):
         phonemes = []
         for word in self:
-            for phoneme in word.phonemes:
-                phonemes.append(phoneme.text)
+            phonemes.extend([ph.text for ph in word.phonemes])
         return phonemes
 
+    @property
     def intervals(self):
-        intervals = []
-        for word in self:
-            intervals.append([word.start, word.end])
-        return intervals
+        return [[word.start, word.end] for word in self]
 
     def clear_language_prefix(self):
         for word in self:

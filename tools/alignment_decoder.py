@@ -27,8 +27,6 @@ class AlignmentDecoder:
         self.melspec_config = melspec_config
         self.frame_length = self.melspec_config["hop_length"] / (self.melspec_config["sample_rate"])
 
-        self.ctc_logits = None
-
         self.ph_seq_id = None
         self.ph_idx_seq = None
         self.ph_frame_pred = None
@@ -53,15 +51,13 @@ class AlignmentDecoder:
                ignore_sp: bool = True,
                non_speech_phonemes: list[str] = None,
                ):
-        if non_speech_phonemes is None:
-            non_speech_phonemes: list[str] = self.non_speech_phs[1:]
+        non_speech_phonemes = non_speech_phonemes or []
         ph_seq_id = np.array([self.vocab["vocab"][ph] for ph in ph_seq])
         self.ph_seq_id = ph_seq_id
 
-        ph_mask = np.zeros(self.vocab["vocab_size"])
-        ph_mask[ph_seq_id] = 1
-        ph_mask[0] = 1  # ignored phonemes
-        ph_mask = (1 - ph_mask) * 1e9
+        ph_mask = np.full(self.vocab["vocab_size"], 1e9)
+        ph_mask[ph_seq_id] = 0
+        ph_mask[0] = 0
 
         if word_seq is None:
             word_seq = ph_seq
@@ -105,12 +101,7 @@ class AlignmentDecoder:
         # postprocess
         ph_time_fractional = (edge_diff[self.ph_time_int_pred] / 2).clip(-0.5, 0.5)
         ph_time_pred = self.frame_length * (
-            np.concatenate(
-                [
-                    self.ph_time_int_pred.astype("float32") + ph_time_fractional,
-                    [T],
-                ]
-            )
+            np.concatenate([self.ph_time_int_pred.astype("float32") + ph_time_fractional, [T]])
         )
         ph_intervals = np.stack([ph_time_pred[:-1], ph_time_pred[1:]], axis=1)
 
@@ -136,9 +127,9 @@ class AlignmentDecoder:
                 word_idx_last = word_idx
 
         ph_time_pred_int = np.concatenate([self.ph_time_int_pred, [T]])
-        ph_intervals_int = np.stack([ph_time_pred_int[:-1], ph_time_pred_int[1:]], axis=1)
-        self.ph_seq_pred = words.phonemes()
-        self.ph_intervals_pred = words.intervals()
+        ph_intervals_int = np.column_stack([ph_time_pred_int[:-1], ph_time_pred_int[1:]])
+        self.ph_seq_pred = words.phonemes
+        self.ph_intervals_pred = words.intervals
 
         speech_phonemes_mask = np.zeros(T, dtype=bool)
         for i, (start, end) in enumerate(ph_intervals_int):
@@ -171,7 +162,7 @@ class AlignmentDecoder:
             ph_idx_frame[ph_time] += ph_idx - last_ph_idx
             last_ph_idx = ph_idx
         return plot_prob_to_image(melspec=melspec,
-                                  ph_seq=self.pred_words.phonemes(),
+                                  ph_seq=self.pred_words.phonemes,
                                   ph_intervals=ph_intervals_pred_int,
                                   frame_confidence=self.frame_confidence,
                                   cvnt_prob=self.cvnt_probs,

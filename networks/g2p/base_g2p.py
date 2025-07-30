@@ -18,7 +18,7 @@ class BaseG2P:
         # args: list of str
         self.in_format = "lab"
         self.language = kwargs["language"]
-        self.non_speech_phonemes = ["non_speech_phonemes"]
+        self.non_speech_phonemes = kwargs["non_speech_phonemes"]
 
     def _g2p(self, input_text):
         # input text, return phoneme sequence, word sequence, and phoneme index to word index mapping
