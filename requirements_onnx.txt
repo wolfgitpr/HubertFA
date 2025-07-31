@@ -5,5 +5,4 @@ numpy~=1.23.5
 PyYAML~=6.0.1
 tqdm~=4.66.3
 textgrid
-numba
 pandas~=2.0.3

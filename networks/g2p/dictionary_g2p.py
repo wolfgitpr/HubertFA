@@ -46,7 +46,7 @@ class DictionaryG2P(BaseG2P):
 if __name__ == "__main__":
     pass
     grapheme_to_phoneme = DictionaryG2P(
-        **{"dictionary": "../../dictionaries/opencpop-extension.txt", "language": "zh"}
+        **{"dictionary": "../../dictionaries/opencpop-extension.txt", "language": "zh", "non_speech_phonemes": []}
     )
     text = "wo SP shi yi ge xue sheng a"
     ph_seq, word_seq, ph_idx_to_word_idx = grapheme_to_phoneme(text)

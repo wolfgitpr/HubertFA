@@ -1,4 +1,3 @@
-import numba
 import numpy as np
 
 from tools.align_word import Phoneme, Word, WordList
@@ -172,65 +171,75 @@ class AlignmentDecoder:
                                   )
 
     @staticmethod
-    @numba.jit
-    def forward_pass(T, S, prob_log, edge_prob, curr_ph_max_prob_log, dp, ph_seq_id, prob3_pad_len=1):
-        backtrack_s = np.full_like(dp, -1, dtype="int32")
-        edge_prob_log = np.log(edge_prob + 1e-6).astype("float32")
-        not_edge_prob_log = np.log(1 - edge_prob + 1e-6).astype("float32")
+    def forward_pass(T, S, prob_log, edge_prob, curr_ph_max_prob_log, dp, ph_seq_id, prob3_pad_len=2):
+        backtrack_s = np.full_like(dp, -1, dtype=np.int32)
+        edge_prob_log = np.log(edge_prob + 1e-6)
+        not_edge_prob_log = np.log(1 - edge_prob + 1e-6)
+        mask_reset = (ph_seq_id == 0)
+
+        # 预分配数组
+        prob1 = np.empty(S, dtype=np.float32)
+        prob2 = np.full(S, -np.inf, dtype=np.float32)
+        prob3 = np.full(S, -np.inf, dtype=np.float32)
+
+        # 预计算prob3索引和掩码
+        i_vals_prob3 = np.arange(prob3_pad_len, S)
+        idx_arr = np.clip(i_vals_prob3 - prob3_pad_len + 1, 0, S - 1)
+        mask_cond_prob3 = (idx_arr >= S - 1) | (ph_seq_id[idx_arr] == 0)
+
         for t in range(1, T):
-            # [t-1,s] -> [t,s]
-            prob1 = dp[t - 1, :] + prob_log[t, :] + not_edge_prob_log[t]
+            prob_log_t = prob_log[t]
+            edge_log_t = edge_prob_log[t]
+            not_edge_log_t = not_edge_prob_log[t]
+            dp_prev = dp[t - 1]
 
-            prob2 = np.empty(S, dtype=np.float32)
-            prob2[0] = -np.inf
-            for i in range(1, S):
-                prob2[i] = (
-                        dp[t - 1, i - 1]
-                        + prob_log[t, i - 1]
-                        + edge_prob_log[t]
-                        + curr_ph_max_prob_log[i - 1] * (T / S)
-                )
+            # 类型1转移: 停留在当前音素
+            prob1[:] = dp_prev + prob_log_t + not_edge_log_t
 
-            # [t-1,s-2] -> [t,s]
-            prob3 = np.empty(S, dtype=np.float32)
-            for i in range(prob3_pad_len):
-                prob3[i] = -np.inf
-            for i in range(prob3_pad_len, S):
-                if i - prob3_pad_len + 1 < S - 1 and ph_seq_id[i - prob3_pad_len + 1] != 0:
-                    prob3[i] = -np.inf
-                else:
-                    prob3[i] = (
-                            dp[t - 1, i - prob3_pad_len]
-                            + prob_log[t, i - prob3_pad_len]
-                            + edge_prob_log[t]
-                            + curr_ph_max_prob_log[i - prob3_pad_len] * (T / S)
-                    )
+            # 类型2转移: 移动到下一个音素
+            prob2[1:] = (
+                    dp_prev[:S - 1] +
+                    prob_log_t[:S - 1] +
+                    edge_log_t +
+                    curr_ph_max_prob_log[:S - 1] * (T / S)
+            )
 
-            stacked_probs = np.empty((3, S), dtype=np.float32)
-            for i in range(S):
-                stacked_probs[0, i] = prob1[i]
-                stacked_probs[1, i] = prob2[i]
-                stacked_probs[2, i] = prob3[i]
+            # 类型3转移: 跳转到后续音素
+            candidate_vals = (
+                    dp_prev[:S - prob3_pad_len] +
+                    prob_log_t[:S - prob3_pad_len] +
+                    edge_log_t +
+                    curr_ph_max_prob_log[:S - prob3_pad_len] * (T / S)
+            )
+            prob3[i_vals_prob3] = np.where(
+                mask_cond_prob3, candidate_vals, -np.inf
+            )
 
-            for i in range(S):
-                max_idx = 0
-                max_val = stacked_probs[0, i]
-                for j in range(1, 3):
-                    if stacked_probs[j, i] > max_val:
-                        max_val = stacked_probs[j, i]
-                        max_idx = j
-                dp[t, i] = max_val
-                backtrack_s[t, i] = max_idx
+            # 组合概率并找出最佳转移
+            stacked_probs = np.vstack((prob1, prob2, prob3))
+            max_indices = np.argmax(stacked_probs, axis=0)
+            dp[t] = stacked_probs[max_indices, np.arange(S)]
+            backtrack_s[t] = max_indices
 
-            for i in range(S):
-                if backtrack_s[t, i] == 0:
-                    curr_ph_max_prob_log[i] = max(curr_ph_max_prob_log[i], prob_log[t, i])
-                elif backtrack_s[t, i] > 0:
-                    curr_ph_max_prob_log[i] = prob_log[t, i]
+            # 更新当前音素最大概率
+            mask_type0 = (max_indices == 0)
+            mask_type12 = ~mask_type0
+            np.maximum(
+                curr_ph_max_prob_log,
+                prob_log_t,
+                out=curr_ph_max_prob_log,
+                where=mask_type0
+            )
+            np.copyto(
+                curr_ph_max_prob_log,
+                prob_log_t,
+                where=mask_type12
+            )
+            curr_ph_max_prob_log[mask_reset] = 0.0
 
-            for i in range(S):
-                if ph_seq_id[i] == 0:
-                    curr_ph_max_prob_log[i] = 0
+            # 重置临时数组
+            prob2[1:] = -np.inf
+            prob3[i_vals_prob3] = -np.inf
 
         return dp, backtrack_s, curr_ph_max_prob_log
 
@@ -240,6 +249,7 @@ class AlignmentDecoder:
         # edge_prob: (T,2)
         T = ph_prob_log.shape[0]
         S = len(ph_seq_id)
+        assert S > 2, f"len of ph_seq_id is {len(ph_seq_id)}, which must greater than 2."
         prob_log = ph_prob_log[:, ph_seq_id]
 
         # init
@@ -259,15 +269,10 @@ class AlignmentDecoder:
         )
 
         # backward
-        ph_idx_seq = []
-        ph_time_int = []
-        frame_confidence = []
+        ph_idx_seq, ph_time_int, frame_confidence = [], [], []
 
         # 如果mode==forced，只能从最后一个音素或者SP结束
-        if S >= 2 and dp[-1, -2] > dp[-1, -1] and ph_seq_id[-1] == 0:
-            s = S - 2
-        else:
-            s = S - 1
+        s = S - 2 if dp[-1, -2] > dp[-1, -1] and ph_seq_id[-1] == 0 else S - 1
 
         for t in np.arange(T - 1, -1, -1):
             assert backtrack_s[t, s] >= 0 or t == 0

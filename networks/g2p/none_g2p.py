@@ -26,7 +26,7 @@ class NoneG2P(BaseG2P):
 
 if __name__ == "__main__":
     pass
-    grapheme_to_phoneme = NoneG2P(**{"language": "zh"})
+    grapheme_to_phoneme = NoneG2P(**{"language": "zh", "non_speech_phonemes": []})
     text = "wo shi SP yi ge xue sheng"
     ph_seq, word_seq, ph_idx_to_word_idx = grapheme_to_phoneme(text)
     print(ph_seq)
