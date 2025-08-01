@@ -249,7 +249,6 @@ class AlignmentDecoder:
         # edge_prob: (T,2)
         T = ph_prob_log.shape[0]
         S = len(ph_seq_id)
-        assert S > 2, f"len of ph_seq_id is {len(ph_seq_id)}, which must greater than 2."
         prob_log = ph_prob_log[:, ph_seq_id]
 
         # init
@@ -265,7 +264,8 @@ class AlignmentDecoder:
 
         # forward
         dp, backtrack_s, curr_ph_max_prob_log = self.forward_pass(
-            T, S, prob_log, edge_prob, curr_ph_max_prob_log, dp, ph_seq_id
+            T, S, prob_log, edge_prob, curr_ph_max_prob_log, dp, ph_seq_id,
+            prob3_pad_len=2 if S >= 2 else 1
         )
 
         # backward
