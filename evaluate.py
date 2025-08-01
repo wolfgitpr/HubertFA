@@ -62,7 +62,7 @@ def quantize_tier(tier: PointTier, frame_length: float) -> CustomPointTier:
 @click.option(
     "--ignore",
     type=str,
-    default="AP,SP",  # AP,SP,<AP>,<SP>,,pau,cl
+    default="SP",  # AP,SP,<AP>,<SP>,,pau,cl
     help="Ignored phone marks, split by commas",
     show_default=True,
 )

@@ -1,8 +1,8 @@
-import os
-import shutil
-import pathlib
-
 import csv
+import os
+import pathlib
+import shutil
+
 import click
 import textgrid
 
@@ -81,7 +81,7 @@ class Trie:
 )
 def main(ds_csv, spk_name, folder, dictionary, ignore):
     if ignore == "":
-        ignore_phonemes = ['AP', 'SP', 'EP', 'GS']
+        ignore_phonemes = ['SP', 'GS']
     else:
         ignore_phonemes = ignore.split(",")
 
@@ -98,7 +98,7 @@ def main(ds_csv, spk_name, folder, dictionary, ignore):
 
     trie = Trie(dictionary)
 
-    for p in ignore_phonemes:
+    for p in ['AP', 'SP', 'EP', 'GS']:
         trie.insert([p], p)
 
     with open(ds_csv, 'r', encoding='utf-8') as file:
