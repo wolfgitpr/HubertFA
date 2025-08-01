@@ -46,7 +46,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.non_speech_target: list = self.vocab["non_speech_phonemes"]
         self.non_speech_mask_ratio: float = self.config["cvnt_arg"]["mask_ratio"]
 
-        self.ignored_phonemes: list = self.vocab["silent_phonemes"] + self.non_speech_target
+        self.silent_phonemes: list = self.vocab["silent_phonemes"]
+        self.ignored_phonemes: list = [x for x in self.silent_phonemes if x not in self.non_speech_target]
         self.language_prefix: bool = self.vocab.get("language_prefix", True)
 
         self.class_names: list = ['None', *self.non_speech_target]
@@ -179,7 +180,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_speech_phonemes = batch
-        ph_seq = [f"{language}/{ph}" if ph not in self.ignored_phonemes and self.language_prefix else ph for ph in
+        ph_seq = [f"{language}/{ph}" if ph not in self.silent_phonemes and self.language_prefix else ph for ph in
                   ph_seq]
         waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
         wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
@@ -479,8 +480,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
         if tiers:
             for pred_tier, target_tier in tiers:
                 for metric in metrics.values():
-                    pred_tier = remove_ignored_phonemes(self.ignored_phonemes, pred_tier)
-                    target_tier = remove_ignored_phonemes(self.ignored_phonemes, target_tier)
+                    pred_tier = remove_ignored_phonemes(pred_tier, self.ignored_phonemes)
+                    target_tier = remove_ignored_phonemes(target_tier, self.ignored_phonemes)
                     metric.update(quantize_tier(pred_tier, self.frame_length),
                                   quantize_tier(target_tier, self.frame_length))
 

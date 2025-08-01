@@ -18,15 +18,11 @@ from tools.metrics import (
 )
 
 
-def remove_ignored_phonemes(ignored_phonemes_list: list[str], point_tier: PointTier):
+def remove_ignored_phonemes(point_tier: PointTier, ignored_phonemes_list: list[str] = []):
     res_tier = CustomPointTier(name=point_tier.name)
-    if point_tier[0].mark not in ignored_phonemes_list:
-        res_tier.addPoint(point_tier[0])
-    for i in range(len(point_tier) - 1):
-        if point_tier[i].mark in ignored_phonemes_list and point_tier[i + 1].mark in ignored_phonemes_list:
-            continue
-        res_tier.addPoint(point_tier[i + 1])
-
+    for point in point_tier:
+        if point.mark not in ignored_phonemes_list:
+            res_tier.addPoint(point)
     return res_tier
 
 
@@ -66,7 +62,7 @@ def quantize_tier(tier: PointTier, frame_length: float) -> CustomPointTier:
 @click.option(
     "--ignore",
     type=str,
-    default="",  # AP,SP,<AP>,<SP>,,pau,cl
+    default="AP,SP",  # AP,SP,<AP>,<SP>,,pau,cl
     help="Ignored phone marks, split by commas",
     show_default=True,
 )
@@ -111,8 +107,8 @@ def main(pred: str, target: str, recursive: bool, strict: bool, ignore: str, fra
         target_tier = label.textgrid_from_file(target_file)[-1]
 
         # Remove ignored phonemes
-        pred_tier = remove_ignored_phonemes(ignored, pred_tier)
-        target_tier = remove_ignored_phonemes(ignored, target_tier)
+        pred_tier = remove_ignored_phonemes(pred_tier, ignored)
+        target_tier = remove_ignored_phonemes(target_tier, ignored)
 
         # Quantize to frame boundaries
         pred_tier = quantize_tier(pred_tier, frame_length)

@@ -16,7 +16,7 @@ multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
 multiprocess_start_size: 100  # 最小启动数据量
 
 units_cache: true # tools/pretreatment_hubert.py 使用hubert预处理units，保存为wav同名npy文件。避免对照实验时反复预处理。
-valid_set_size: 30 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
+valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
 max_length: 45 # 单条音频最大时长
 
 # 暂未启用

@@ -67,7 +67,7 @@ class MelSpecExtractor(torch.nn.Module):
             fmin: int,
             fmax: int,
             clamp: int,
-            device: str = None,
+            device: str | torch.cuda.device = None,
     ):
         super().__init__()
         if device is None:

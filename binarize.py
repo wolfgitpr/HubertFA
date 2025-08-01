@@ -44,8 +44,10 @@ class ForcedAlignmentBinarizer:
         self.non_speech_phonemes_dict = {"None": 0}
 
         self.silent_phonemes = binary_config['silent_phonemes']
+        assert set(self.non_speech_phonemes).issubset(
+            set(self.silent_phonemes)), "non speech phonemes must in silent phonemes."
         self.melspec_config = binary_config['melspec_config']
-        self.ignored_phonemes = binary_config['non_speech_phonemes'] + binary_config['silent_phonemes']
+        self.ignored_phonemes = binary_config['non_speech_phonemes'] + self.silent_phonemes
 
         self.language_prefix = binary_config['language_prefix']
         self.dictionaries = binary_config['dictionaries']
