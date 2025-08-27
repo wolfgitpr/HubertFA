@@ -1,8 +1,10 @@
+from dataclasses import dataclass
+from typing import Any, Dict, List, Type, Callable, Optional
+
+import torch
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.optimizer import ParamsT
-from dataclasses import dataclass
-from typing import Any, Dict, List, Type, Callable, Optional, Iterable
 
 
 @dataclass
@@ -24,13 +26,13 @@ class ChainedOptimizer(Optimizer):
     """
 
     def __init__(
-        self,
-        params: ParamsT,
-        optimizer_specs: List[OptimizerSpec],
-        lr: float,
-        weight_decay: float = 0.0,
-        optimizer_selection_callback: Optional[Callable[[Tensor, int], None]] = None,
-        **common_kwargs,
+            self,
+            params: ParamsT,
+            optimizer_specs: List[OptimizerSpec],
+            lr: float,
+            weight_decay: float = 0.0,
+            optimizer_selection_callback: Optional[Callable[[Tensor, int], None]] = None,
+            **common_kwargs,
     ):
         self.optimizer_specs = optimizer_specs
         self.optimizer_selection_callback = optimizer_selection_callback
@@ -38,7 +40,7 @@ class ChainedOptimizer(Optimizer):
         defaults = dict(lr=lr, weight_decay=weight_decay)
         super().__init__(params, defaults)
 
-        # Split the params for each optimizer
+        # Split the params for each optimzier
         params_for_optimizers = [[] for _ in optimizer_specs]
         for param_group in self.param_groups:
             params = param_group["params"]
@@ -87,9 +89,14 @@ class ChainedOptimizer(Optimizer):
                 self.optimizers[optimizer_idx].param_groups[param_group_idx]["lr"] = param_group["lr"]
 
     def step(self, closure=None) -> None:
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
         self._copy_lr_to_optimizers()
         for opt in self.optimizers:
-            opt.step(closure)
+            opt.step(closure=None)
+        return loss
 
     def add_param_group(self, param_group: Dict[str, Any]) -> None:
         super().add_param_group(param_group)
