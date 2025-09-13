@@ -15,6 +15,7 @@ from tools.encoder import UnitsEncoder
 from tools.get_melspec import MelSpecExtractor
 from tools.load_wav import load_wav
 from tools.multiprocess_utils import chunked_multiprocess_run
+from tools.power_calculator import compute_power_curve
 
 unitsEncoder = None
 get_melspec = None
@@ -385,6 +386,14 @@ class ForcedAlignmentBinarizer:
                 return None
             n_frames = waveform.size(-1) // self.hop_size + 1
 
+            power_curve = compute_power_curve(
+                waveform.mean(dim=0) if waveform.dim() > 1 else waveform,
+                self.sample_rate, self.hop_size, n_frames, self.device
+            )
+
+            if power_curve.shape[0] != n_frames:
+                print(f"Skipping {wav_path}, make power_curve failed.")
+
             label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
             if label_type_id >= 2:
                 if len(_item.ph_dur) != len(_item.ph_id_seq): label_type_id = 1
@@ -425,6 +434,7 @@ class ForcedAlignmentBinarizer:
             return {
                 'name': str(_item["name"]),
                 'input_feature': units.cpu().numpy().astype("float32"),
+                'power_curve': power_curve.cpu().numpy().astype("float32"),
                 'melspec': melspec.cpu().numpy().astype("float32") if export_mel else np.array([0]),
                 'ph_id_seq': ph_id_seq.astype("int32"),
                 'ph_edge': ph_edge.astype("float32"),

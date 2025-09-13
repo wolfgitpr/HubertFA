@@ -237,7 +237,6 @@ class AlignmentDecoder:
             )
             curr_ph_max_prob_log[mask_reset] = 0.0
 
-            # 重置临时数组
             prob2[1:] = -np.inf
             prob3[i_vals_prob3] = -np.inf
 
@@ -272,7 +271,10 @@ class AlignmentDecoder:
         ph_idx_seq, ph_time_int, frame_confidence = [], [], []
 
         # 如果mode==forced，只能从最后一个音素或者SP结束
-        s = S - 2 if dp[-1, -2] > dp[-1, -1] and ph_seq_id[-1] == 0 else S - 1
+        if S == 1:
+            s = 0
+        else:
+            s = S - 2 if dp[-1, -2] > dp[-1, -1] and ph_seq_id[-1] == 0 else S - 1
 
         for t in np.arange(T - 1, -1, -1):
             assert backtrack_s[t, s] >= 0 or t == 0
