@@ -14,7 +14,6 @@ from networks.layer.backbone.unet import UNetBackbone
 from networks.layer.block.resnet_block import ResidualBasicBlock
 from networks.layer.fusion.power_curve_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
-from networks.loss.BinaryEMDLoss import BinaryEMDLoss
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
 from tools.alignment_decoder import AlignmentDecoder
@@ -98,7 +97,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.losses_names = [
             "ph_frame_GHM_loss",
             "ph_edge_GHM_loss",
-            "ph_edge_EMD_loss",
             "ph_edge_diff_loss",
             "ctc_GHM_loss",
             "cvnt_loss",
@@ -130,14 +128,12 @@ class LitForcedAlignmentTask(pl.LightningModule):
             loss_config["function"]["alpha"],
             label_smoothing=0.0,
         )
-        self.EMD_loss_fn = BinaryEMDLoss()
         self.ph_edge_diff_GHM_loss_fn = MultiLabelGHMLoss(
             1,
             loss_config["function"]["num_bins"],
             loss_config["function"]["alpha"],
             label_smoothing=0.0,
         )
-        self.MSE_loss_fn = nn.MSELoss()
         self.CTC_GHM_loss_fn = CTCGHMLoss(alpha=1 - 1e-3)
 
         self.unitsEncoder = None
@@ -300,7 +296,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         ph_frame_GHM_loss = ZERO
         ph_edge_GHM_loss = ZERO
-        ph_edge_EMD_loss = ZERO
         ph_edge_diff_loss = ZERO
 
         cvnt_loss = ZERO
@@ -340,11 +335,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 valid
             )
 
-            ph_edge_EMD_loss = self.EMD_loss_fn(
-                torch.sigmoid(selected_edges) * selected_time_mask,
-                selected_edge_gt * selected_time_mask
-            )
-
             cvnt_loss = self.cvnt_loss(cvnt_logits, non_speech_target)
 
         ctc_GHM_loss = ZERO
@@ -368,7 +358,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
         losses = [
             ph_frame_GHM_loss,
             ph_edge_GHM_loss,
-            ph_edge_EMD_loss,
             ph_edge_diff_loss,
             ctc_GHM_loss,
             cvnt_loss
