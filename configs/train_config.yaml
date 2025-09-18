@@ -1,4 +1,4 @@
-model_name: 0727_hfa_cvnt
+model_name: 0918_hfa_power
 
 # settings
 float32_matmul_precision: high
@@ -23,17 +23,16 @@ model:
   hidden_dims: 192
   down_sampling_factor: 2
   down_sampling_times: 3
-  channels_scaleup_factor: 1.3
+  channels_scaleup_factor: 1.5
 
 cvnt_arg:
-  mask_ratio: 0.3
+  mask_ratio: 0.2
   encoder_conform_attention_drop: 0.05
-
-  num_layers: 3
-  encoder_conform_dim: 96
+  num_layers: 4
+  encoder_conform_dim: 128
   encoder_conform_ffn_latent_drop: 0.05
   encoder_conform_ffn_out_drop: 0.05
-  encoder_conform_kernel_size: 31
+  encoder_conform_kernel_size: 23
 
 optimizer_config:
   lr: 0.0005
@@ -46,7 +45,7 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 8.0, 0.1, 1.0, 2.0, 6.0 ]
+    weights: [ 8.0, 0.1, 1.0, 2.0, 10.0 ]
     enable_RampUpScheduler: [ False,False,False,True,False ]
   function:
     num_bins: 10
