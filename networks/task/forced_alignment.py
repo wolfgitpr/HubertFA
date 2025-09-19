@@ -83,17 +83,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
             dropout=model_config.get("power_attention_dropout", 0.1)
         )
 
-        self.power_preprocess = nn.Sequential(
-            nn.Conv1d(1, 32, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.BatchNorm1d(32),
-            nn.Conv1d(32, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm1d(16),
-            nn.Conv1d(16, 1, kernel_size=1),
-            nn.Tanh()
-        )
-
         self.losses_names = [
             "ph_frame_GHM_loss",
             "ph_edge_GHM_loss",
@@ -207,7 +196,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
             waveform.mean(dim=0) if waveform.dim() > 1 else waveform,
             self.melspec_config["sample_rate"], self.melspec_config["hop_length"], n_frames, self.device
         )
-        power_curve = self.power_preprocess(power_curve.permute(0, 2, 1)).permute(0, 2, 1)
 
         with torch.no_grad():
             (
@@ -344,12 +332,15 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 x,  # [B, T, C]
                 power_curve  # [B, T, 1]
                 ):
-        cvnt_logits = self.cvnt(x)
-        x = self.backbone(x)
-        logits = self.head(x)  # [B, T, <vocab_size> + 2]
-        ph_frame_logits = logits[:, :, 2:]  # [B, T, <vocab_size>]
-        ph_edge_logits = logits[:, :, 0] + self.power_edge_fusion(x, power_curve).squeeze(-1)
-        ctc_logits = torch.cat([logits[:, :, [1]], logits[:, :, 3:]], dim=-1)  # [B, T, <vocab_size>]
+        cvnt_logits = self.cvnt(x)  # [B, N, T]
+        x = self.backbone(x)  # [B, T, hidden_dims]
+        logits = self.head(x)  # [B, T, vocab_size + 2]
+        ph_frame_logits = logits[:, :, 2:]  # [B, T, vocab_size]
+
+        edge_enhancement = self.power_edge_fusion(x, power_curve)  # [B, T, 1]
+        ph_edge_logits = logits[:, :, 0] + edge_enhancement.squeeze(-1)  # [B, T]
+
+        ctc_logits = torch.cat([logits[:, :, [1]], logits[:, :, 3:]], dim=-1)  # [B, T, vocab_size]
         return ph_frame_logits, ph_edge_logits, ctc_logits, cvnt_logits
 
     def training_step(self, batch, batch_idx):
@@ -374,7 +365,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ) = batch
 
             power_curve = power_curve.unsqueeze(-1)  # [B, T, 1]
-            power_curve = self.power_preprocess(power_curve.permute(0, 2, 1)).permute(0, 2, 1)
 
             non_speech_mask = self.make_non_speech_mask(input_feature.shape, non_speech_intervals)
             masked_input = torch.where(
@@ -503,10 +493,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
         ) = batch
 
         power_curves = power_curves.unsqueeze(-1)  # [B, T, 1]
-        power_curves = self.power_preprocess(power_curves.permute(0, 2, 1)).permute(0, 2, 1)
 
         (
-            ph_frame_logits,  # (B, T, vocab_size)
+            ph_frame_logits,  # (B, T, vocab_size)-
             ph_edge_logits,  # (B, T)
             ctc_logits,  # (B, T, vocab_size)
             cvnt_logits,  # [B,N,T]

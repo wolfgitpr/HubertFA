@@ -2,24 +2,37 @@ import torch
 import torch.nn as nn
 
 
-class ChannelAttention1D(nn.Module):
-    def __init__(self, channels, reduction=4):
+class PowerProcessor(nn.Module):
+    def __init__(self, input_dim=1, hidden_dim=32, output_dim=1):
         super().__init__()
-        self.avg_pool = nn.AdaptiveAvgPool1d(1)
-        self.max_pool = nn.AdaptiveMaxPool1d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channels, channels // reduction),
+        self.conv1 = nn.Conv1d(input_dim, hidden_dim, kernel_size=5, padding=2)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.conv2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
+        self.conv3 = nn.Conv1d(hidden_dim, output_dim, kernel_size=1)
+        self.activation = nn.SiLU()
+
+        attention_mid_dim = max(1, output_dim // 4)
+        self.attention = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+            nn.Conv1d(output_dim, attention_mid_dim, kernel_size=1),
             nn.ReLU(),
-            nn.Linear(channels // reduction, channels),
+            nn.Conv1d(attention_mid_dim, output_dim, kernel_size=1),
             nn.Sigmoid()
         )
 
-    def forward(self, x):
-        b, c, t = x.size()
-        avg_out = self.fc(self.avg_pool(x).view(b, c))
-        max_out = self.fc(self.max_pool(x).view(b, c))
-        out = avg_out + max_out
-        return out.view(b, c, 1)
+    def forward(self,
+                x  # [B, T, 1]
+                ):
+        x = x.transpose(1, 2)  # [B, 1, T]
+        x = self.activation(self.bn1(self.conv1(x)))
+        x = self.activation(self.bn2(self.conv2(x)))
+        x = self.conv3(x)
+
+        attn = self.attention(x)
+        x = x * attn
+
+        return x.transpose(1, 2)  # [B, T, output_dim]
 
 
 class PowerCurveEdgeFusion(nn.Module):
@@ -27,33 +40,31 @@ class PowerCurveEdgeFusion(nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
 
-        self.power_processor = nn.Sequential(
-            nn.Conv1d(power_dim, hidden_dim, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.Conv1d(hidden_dim, hidden_dim, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(hidden_dim, 1, kernel_size=1),
+        self.power_processor = PowerProcessor(
+            input_dim=power_dim,
+            hidden_dim=32,
+            output_dim=hidden_dim
         )
 
-        self.attention = ChannelAttention1D(1, reduction=1)
+        self.feature_proj = nn.Linear(feature_dim, hidden_dim)
 
-        self.gate = nn.Sequential(
-            nn.Linear(feature_dim + 1, feature_dim),
+        self.edge_output = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
-            nn.Linear(feature_dim, 1),
+            nn.Linear(hidden_dim, 1),
             nn.Sigmoid()
         )
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, power_curve):
-        power_features = self.power_processor(power_curve.transpose(1, 2))  # [B, hidden_dim, T]
-        power_features = self.attention(power_features) * power_features
-        power_features = power_features.transpose(1, 2)  # [B, T, 1]
+    def forward(self,
+                x,  # [B, T, feature_dim]
+                power_curve  # [B, T, 1]
+                ):
+        power_features = self.power_processor(power_curve)  # [B, T, hidden_dim]
+        feature_proj = self.feature_proj(x)  # [B, T, hidden_dim]
 
-        gate_input = torch.cat([x, power_features], dim=-1)
-        gate_value = self.gate(gate_input)  # [B, T, 1]
+        fused_features = torch.cat([feature_proj, power_features], dim=-1)  # [B, T, hidden_dim*2]
+        edge_enhancement = self.edge_output(fused_features)  # [B, T, 1]
 
-        edge_enhancement = gate_value * power_features
-
-        return edge_enhancement
+        return self.dropout(edge_enhancement)  # [B, T, 1]
