@@ -22,30 +22,28 @@ def plot_prob_to_image(melspec,
     T = melspec.shape[-1]
     x = np.arange(T)
 
-    ax1.imshow(melspec, origin="lower", aspect="auto", zorder=0)
+    ax1.pcolormesh(x, np.arange(melspec.shape[0]), melspec, shading='auto', vmin=v_min, vmax=v_max)
 
-    y_max = melspec.shape[-2]
+    y_max = melspec.shape[0]
     ax1.set_ylim(0, y_max)
 
     draw_upper_blue = ph_time_gt is not None
     red_upper, red_full = [], []
 
-    for i, interval in enumerate(ph_intervals):
-        if i == 0 or (i > 0 and ph_intervals[i - 1][1] != interval[0]):
-            if 0 < interval[0] < T:
-                if draw_upper_blue:
-                    red_upper.append(interval[0])
-                else:
-                    red_full.append(interval[0])
-        if 0 <= interval[1] < T:
-            if draw_upper_blue:
-                red_upper.append(interval[1])
-            else:
-                red_full.append(interval[1])
+    all_points = []
+    for interval in ph_intervals:
+        all_points.extend([interval[0], interval[1]])
+    all_points = np.array(all_points)
 
-    if red_upper:
+    valid_points = all_points[(all_points >= 0) & (all_points < T)]
+    if draw_upper_blue:
+        red_upper = valid_points
+    else:
+        red_full = valid_points
+
+    if len(red_upper) > 0:
         ax1.vlines(red_upper, ymin=0.5 * y_max, ymax=y_max, colors='r', linewidth=1, zorder=2)
-    if red_full:
+    if len(red_full) > 0:
         ax1.vlines(red_full, ymin=0, ymax=y_max, colors='r', linewidth=1, zorder=2)
 
     for i, interval in enumerate(ph_intervals):
@@ -90,29 +88,21 @@ def plot_prob_to_image(melspec,
     time_edges = np.linspace(0, n_frames * frame_duration, n_frames + 1)
 
     scaled_prob = cvnt_prob * melspec.shape[1]
-    prob_cumsum = np.cumsum(scaled_prob, axis=0)
 
+    cumulative = np.zeros(n_frames)
     for i in range(len(scaled_prob)):
         if i == 0:
-            ax2.bar(
-                time_axis,
-                scaled_prob[0],
-                width=frame_duration if frame_duration else 1.0,
-                align='edge' if frame_duration else 'center',
-                alpha=0.0,
-                label=label[0]
-            )
-        else:
-            bottom = prob_cumsum[i - 1] if i > 0 else None
-            ax2.bar(
-                time_axis,
-                scaled_prob[i],
-                width=frame_duration if frame_duration else 1.0,
-                align='edge' if frame_duration else 'center',
-                bottom=bottom,
-                label=label[i],
-                alpha=bar_alpha
-            )
+            cumulative += scaled_prob[0]
+            continue
+
+        ax2.fill_between(
+            time_axis,
+            cumulative,
+            cumulative + scaled_prob[i],
+            alpha=bar_alpha,
+            label=label[i]
+        )
+        cumulative += scaled_prob[i]
 
     ax2.pcolormesh(
         time_edges,
