@@ -51,7 +51,6 @@ loss_config:
     num_bins: 10
     alpha: 0.999
     label_smoothing: 0.08
-    pseudo_label_ratio: 0.3
 
 # trainer
 accelerator: auto

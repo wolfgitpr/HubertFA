@@ -140,7 +140,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.decoder = AlignmentDecoder(self.vocab, self.class_names, self.melspec_config)
 
         # validation_step_outputs
-        self.validation_step_outputs = {"losses": [], "tiers-2": [], "tiers-3": []}
+        self.validation_step_outputs = {"losses": [], "tiers-0": [], "tiers-1": []}
 
         self.loss_weights = config.get('loss_weights', [1.0] * self.num_classes)
         self.focal_gamma = config.get('focal_gamma', 2.0)
@@ -281,79 +281,54 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_seq_lengths_gt,  # (B)
             ph_mask,  # (B, vocab_size)
             input_feature_lengths,  # (B)
-            label_type,  # (B)
             non_speech_target,
             valid=False
     ):
         device = ph_frame_logits.device
         ZERO = torch.tensor(0.0, device=device, requires_grad=True)
 
-        full_mask = label_type >= 2
-        weak_mask = label_type >= 1
-
         time_mask = torch.arange(ph_frame_logits.shape[1], device=device)[None, :] < input_feature_lengths[:, None]
         time_mask = time_mask.float()
 
-        ph_frame_GHM_loss = ZERO
-        ph_edge_GHM_loss = ZERO
-        ph_edge_diff_loss = ZERO
+        edge_diff_gt = (ph_edge_gt[:, 1:] - ph_edge_gt[:, :-1])
+        edge_diff_gt = (edge_diff_gt + 1) / 2
 
-        cvnt_loss = ZERO
+        edge_diff_pred = torch.sigmoid(ph_edge_logits[:, 1:]) - torch.sigmoid(ph_edge_logits[:, :-1])
+        edge_diff_pred = (edge_diff_pred + 1) / 2
 
-        if torch.any(full_mask):
-            selected_logits = ph_frame_logits[full_mask]
-            selected_edges = ph_edge_logits[full_mask]
-            selected_gt = ph_frame_gt[full_mask]
-            selected_edge_gt = ph_edge_gt[full_mask]
-            selected_ph_mask = ph_mask[full_mask]
-            selected_time_mask = time_mask[full_mask]
+        valid_diff_mask = time_mask[:, 1:] > 0
+        ph_edge_diff_loss = self.ph_edge_diff_GHM_loss_fn(
+            edge_diff_pred.unsqueeze(-1),  # (B,T-1,1)
+            edge_diff_gt.unsqueeze(-1),  # (B,T-1,1)
+            valid_diff_mask.unsqueeze(-1),
+            valid
+        ) if valid_diff_mask.any() else ZERO
 
-            edge_diff_gt = (selected_edge_gt[:, 1:] - selected_edge_gt[:, :-1])
-            edge_diff_gt = (edge_diff_gt + 1) / 2
+        ph_frame_GHM_loss = self.ph_frame_GHM_loss_fn(
+            ph_frame_logits, ph_frame_gt,
+            ph_mask.unsqueeze(1) * time_mask.unsqueeze(-1),
+            valid
+        )
 
-            edge_diff_pred = torch.sigmoid(selected_edges[:, 1:]) - torch.sigmoid(selected_edges[:, :-1])
-            edge_diff_pred = (edge_diff_pred + 1) / 2
+        ph_edge_GHM_loss = self.ph_edge_GHM_loss_fn(
+            ph_edge_logits.unsqueeze(-1),
+            ph_edge_gt.unsqueeze(-1),
+            time_mask.unsqueeze(-1),
+            valid
+        )
 
-            valid_diff_mask = selected_time_mask[:, 1:] > 0
-            ph_edge_diff_loss = self.ph_edge_diff_GHM_loss_fn(
-                edge_diff_pred.unsqueeze(-1),  # (B,T-1,1)
-                edge_diff_gt.unsqueeze(-1),  # (B,T-1,1)
-                valid_diff_mask.unsqueeze(-1),
-                valid
-            ) if valid_diff_mask.any() else ZERO
+        cvnt_loss = self.cvnt_loss(cvnt_logits, non_speech_target)
 
-            ph_frame_GHM_loss = self.ph_frame_GHM_loss_fn(
-                selected_logits, selected_gt,
-                selected_ph_mask.unsqueeze(1) * selected_time_mask.unsqueeze(-1),
-                valid
-            )
+        ctc_log_probs = torch.log_softmax(ctc_logits, dim=-1)
+        ctc_log_probs = ctc_log_probs.permute(1, 0, 2)  # (T, B, C)
 
-            ph_edge_GHM_loss = self.ph_edge_GHM_loss_fn(
-                selected_edges.unsqueeze(-1),
-                selected_edge_gt.unsqueeze(-1),
-                selected_time_mask.unsqueeze(-1),
-                valid
-            )
-
-            cvnt_loss = self.cvnt_loss(cvnt_logits, non_speech_target)
-
-        ctc_GHM_loss = ZERO
-        if torch.any(weak_mask):
-            weak_logits = ctc_logits[weak_mask]
-            weak_seq_gt = ph_seq_gt[weak_mask]
-            weak_seq_len = ph_seq_lengths_gt[weak_mask]
-            weak_time_mask = input_feature_lengths[weak_mask]
-
-            ctc_log_probs = torch.log_softmax(weak_logits, dim=-1)
-            ctc_log_probs = ctc_log_probs.permute(1, 0, 2)  # (T, B, C)
-
-            ctc_GHM_loss = self.CTC_GHM_loss_fn(
-                ctc_log_probs,
-                weak_seq_gt,
-                weak_time_mask,
-                weak_seq_len,
-                valid
-            )
+        ctc_GHM_loss = self.CTC_GHM_loss_fn(
+            ctc_log_probs,
+            ph_seq_gt,
+            input_feature_lengths,
+            ph_seq_lengths_gt,
+            valid
+        )
 
         losses = [
             ph_frame_GHM_loss,
@@ -388,7 +363,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_edge,  # (B, T)
                 ph_frame,  # (B, T)
                 ph_mask,  # (B vocab_size)
-                label_type,  # (B)
                 melspec,
                 ph_time,
                 name,
@@ -432,7 +406,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_seq_lengths,
                 ph_mask,
                 input_feature_lengths,
-                label_type,
                 masked_non_speech_target,
                 valid=False
             )
@@ -457,27 +430,22 @@ class LitForcedAlignmentTask(pl.LightningModule):
             )
             self.log_dict(log_dict)
 
-            valid_mask = label_type >= 2  # [B]
             precision_metrics = {}
 
-            if valid_mask.any():
-                cvnt_logits_valid = cvnt_logits[valid_mask]  # [valid_B, N, T]
-                non_speech_target_valid = masked_non_speech_target[valid_mask]  # [valid_B, N, T]
+            with torch.no_grad():
+                probs = torch.softmax(cvnt_logits, dim=1)  # [valid_B, N, T]
+                pred_classes = torch.argmax(probs, dim=1)  # [valid_B, T]
 
-                with torch.no_grad():
-                    probs = torch.softmax(cvnt_logits_valid, dim=1)  # [valid_B, N, T]
-                    pred_classes = torch.argmax(probs, dim=1)  # [valid_B, T]
+                for class_idx, class_name in enumerate(self.class_names):
+                    if class_idx == 0:
+                        continue
 
-                    for class_idx, class_name in enumerate(self.class_names):
-                        if class_idx == 0:
-                            continue
+                    pred_mask = (pred_classes == class_idx)  # [valid_B, T]
+                    true_mask = masked_non_speech_target[:, class_idx, :] > 0.5  # [valid_B, T]
 
-                        pred_mask = (pred_classes == class_idx)  # [valid_B, T]
-                        true_mask = non_speech_target_valid[:, class_idx, :] > 0.5  # [valid_B, T]
-
-                        if true_mask.sum() > 0:
-                            precision = (pred_mask & true_mask).sum() / pred_mask.sum().clamp_min(1e-8)
-                            precision_metrics[f'non_speech_phonemes/{class_name}'] = precision
+                    if true_mask.sum() > 0:
+                        precision = (pred_mask & true_mask).sum() / pred_mask.sum().clamp_min(1e-8)
+                        precision_metrics[f'non_speech_phonemes/{class_name}'] = precision
 
             for metric_name, value in precision_metrics.items():
                 self.log(metric_name, value)
@@ -500,8 +468,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
         if tiers:
             for pred_tier, target_tier in tiers:
                 for metric in metrics.values():
-                    pred_tier = remove_ignored_phonemes(pred_tier, self.ignored_phonemes)
-                    target_tier = remove_ignored_phonemes(target_tier, self.ignored_phonemes)
+                    # TODO:: evaluate non_speech_phonemes
+                    pred_tier = remove_ignored_phonemes(pred_tier, self.silent_phonemes)
+                    target_tier = remove_ignored_phonemes(target_tier, self.silent_phonemes)
                     metric.update(quantize_tier(pred_tier, self.frame_length),
                                   quantize_tier(target_tier, self.frame_length))
 
@@ -523,7 +492,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_edge,  # (B, T)
             ph_frame,  # (B, T)
             ph_mask,  # (B vocab_size)
-            label_type,  # (B)
             melspec,
             ph_time,
             name,
@@ -573,7 +541,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_seq_lengths,
                 ph_mask,
                 input_feature_lengths,
-                label_type,
                 non_speech_target,
                 valid=True
             )
@@ -584,23 +551,22 @@ class LitForcedAlignmentTask(pl.LightningModule):
             losses = torch.stack(losses)
             self.validation_step_outputs["losses"].append(losses)
 
-        label_type_id = label_type.cpu().numpy()[0]
-        if label_type_id >= 2:
-            pred_tier = CustomPointTier(name="phones")
-            target_tier = CustomPointTier(name="phones")
+        pred_tier = CustomPointTier(name="phones")
+        target_tier = CustomPointTier(name="phones")
 
-            for mark, time in zip(ph_seq[0], ph_time[0].cpu().numpy()):
-                target_tier.addPoint(textgrid.Point(float(time), mark))
+        for mark, time in zip(ph_seq[0], ph_time[0].cpu().numpy()):
+            target_tier.addPoint(textgrid.Point(float(time), mark))
 
-            for mark, time in zip(self.decoder.ph_seq_pred, self.decoder.ph_intervals_pred):
-                pred_tier.addPoint(textgrid.Point(float(time[0]), mark))
-            self.validation_step_outputs[f"tiers-{label_type_id}"].append((pred_tier, target_tier))
+        for mark, time in zip(self.decoder.ph_seq_pred, self.decoder.ph_intervals_pred):
+            pred_tier.addPoint(textgrid.Point(float(time[0]), mark))
+        self.validation_step_outputs[f"tiers-{dataloader_idx}"].append((pred_tier, target_tier))
 
         if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))
                 and batch_idx < self.config.get("num_valid_plots", 20)):
             melspec = melspec[0].cpu().numpy().squeeze()  # [N_Mel,T]
             fig = self.decoder.plot(melspec, ph_time_gt=ph_time_raw[0])
-            self.logger.experiment.add_figure(f"valid/plot_{name[0]}", fig, self.global_step)
+            self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0]}", fig,
+                                              self.global_step)
 
     def on_validation_epoch_end(self):
         losses = torch.stack(self.validation_step_outputs["losses"], dim=0)
@@ -609,15 +575,15 @@ class LitForcedAlignmentTask(pl.LightningModule):
             {f"valid/{k}": v for k, v in zip(self.losses_names, losses) if v != 0}
         )
 
-        val_loss = self._get_evaluate_loss(self.validation_step_outputs.get(f"tiers-2", []))
+        val_loss = self._get_evaluate_loss(self.validation_step_outputs.get(f"tiers-0", []))
         for metric_name, metric_value in val_loss.items():
             self.log_dict({f"valid_evaluate/{metric_name}": metric_value})
-        self.validation_step_outputs[f"tiers-2"].clear()
+        self.validation_step_outputs[f"tiers-0"].clear()
 
-        evaluate_loss = self._get_evaluate_loss(self.validation_step_outputs.get(f"tiers-3", []))
+        evaluate_loss = self._get_evaluate_loss(self.validation_step_outputs.get(f"tiers-1", []))
         for metric_name, metric_value in evaluate_loss.items():
             self.log_dict({f"unseen_evaluate/{metric_name}": metric_value})
-        self.validation_step_outputs[f"tiers-3"].clear()
+        self.validation_step_outputs[f"tiers-1"].clear()
 
     def configure_optimizers(self):
         optimizer = Muon_AdamW(

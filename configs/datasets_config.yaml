@@ -18,6 +18,3 @@ datasets:
     language: yue
     test_prefixes:
       - xxx
-  # blank 为无标注wav，不确定是否有效
-  - raw_data_dir: path/to/spk_1/raw
-    label_type: blank

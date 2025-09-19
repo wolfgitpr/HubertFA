@@ -86,8 +86,6 @@ class ForcedAlignmentBinarizer:
                 dict_phonemes.append(ph)
 
         for dataset in self.datasets:
-            if dataset.get("label_type", "blank") == "blank":
-                continue
             language = dataset.get("language", "blank")
             raw_data_dir = dataset["raw_data_dir"]
 
@@ -196,103 +194,65 @@ class ForcedAlignmentBinarizer:
         # binarize train set
         self.binarize("train", meta_data_train, self.binary_folder)
 
-    def make_ph_data(self, vocab, T, label_type_id, raw_ph_id_seq, raw_ph_dur):
-        if label_type_id == 0:
-            # ph_seq: [S]
-            ph_id_seq = np.array([]).astype("int32")
+    def make_ph_data(self, vocab, T, raw_ph_id_seq, raw_ph_dur):
+        # ph_seq: [S]
+        ph_id_seq = np.array(raw_ph_id_seq).astype("int32")
+        not_sp_idx = ph_id_seq != 0
+        ph_id_seq = ph_id_seq[not_sp_idx]
 
-            # ph_edge: [T]
-            ph_edge = np.zeros([T], dtype="float32")
+        # ph_edge: [T]
+        ph_dur = np.array(raw_ph_dur).astype("float32")
+        ph_time = np.array(np.concatenate(([0], ph_dur))).cumsum()
+        ph_frame = ph_time / self.frame_length
+        ph_interval = np.stack((ph_frame[:-1], ph_frame[1:]))
+        ph_time = ph_time[:-1]
+        ph_time = ph_time[not_sp_idx]
 
-            # ph_frame: [T]
-            ph_frame = np.zeros(T, dtype="int32")
+        ph_interval = ph_interval[:, not_sp_idx]
+        ph_id_seq = ph_id_seq
+        ph_frame = np.unique(ph_interval.flatten())
+        if ph_frame[-1] >= T:
+            ph_frame = ph_frame[:-1]
 
-            # ph_time: [T]
-            ph_time = np.zeros(T, dtype="float32")
-
-            # ph_mask: [vocab_size]
-            ph_mask = np.ones(vocab["vocab_size"], dtype="int32")
-        elif label_type_id == 1:
-            # ph_seq: [S]
-            ph_id_seq = np.array(raw_ph_id_seq).astype("int32")
-            ph_id_seq = ph_id_seq[ph_id_seq != 0]
-
-            if len(ph_id_seq) <= 0:
-                return None, None, None, None, None
-
-            # ph_edge: [T]
-            ph_edge = np.zeros([T], dtype="float32")
-
-            # ph_frame: [T]
-            ph_frame = np.zeros(T, dtype="int32")
-
-            # ph_time: [T]
-            ph_time = np.zeros(T, dtype="float32")
-
-            # ph_mask: [vocab_size]
-            ph_mask = np.zeros(vocab["vocab_size"], dtype="int32")
-            ph_mask[ph_id_seq] = 1
-            ph_mask[0] = 1
-        elif label_type_id >= 2:
-            # ph_seq: [S]
-            ph_id_seq = np.array(raw_ph_id_seq).astype("int32")
-            not_sp_idx = ph_id_seq != 0
-            ph_id_seq = ph_id_seq[not_sp_idx]
-
-            # ph_edge: [T]
-            ph_dur = np.array(raw_ph_dur).astype("float32")
-            ph_time = np.array(np.concatenate(([0], ph_dur))).cumsum()
-            ph_frame = ph_time / self.frame_length
-            ph_interval = np.stack((ph_frame[:-1], ph_frame[1:]))
-            ph_time = ph_time[:-1]
-            ph_time = ph_time[not_sp_idx]
-
-            ph_interval = ph_interval[:, not_sp_idx]
-            ph_id_seq = ph_id_seq
-            ph_frame = np.unique(ph_interval.flatten())
-            if ph_frame[-1] >= T:
-                ph_frame = ph_frame[:-1]
-
-            if len(ph_id_seq) <= 0:
-                return None, None, None, None, None
-
-            ph_edge = np.zeros([T], dtype="float32")
-            if len(ph_id_seq) > 0:
-                if ph_frame[-1] + 0.5 > T:
-                    ph_frame = ph_frame[:-1]
-                if ph_frame[0] - 0.5 < 0:
-                    ph_frame = ph_frame[1:]
-                ph_time_int = np.round(ph_frame).astype("int32")
-                ph_time_fractional = ph_frame - ph_time_int
-
-                ph_edge[ph_time_int] = 0.5 + ph_time_fractional
-                ph_edge[ph_time_int - 1] = 0.5 - ph_time_fractional
-                ph_edge = ph_edge * 0.8 + 0.1
-
-            # ph_frame: [T]
-            ph_frame = np.zeros(T, dtype="int32")
-            if len(ph_id_seq) > 0:
-                for ph_id, st, ed in zip(
-                        ph_id_seq, ph_interval[0], ph_interval[1]
-                ):
-                    if st < 0:
-                        st = 0
-                    if ed > T:
-                        ed = T
-                    ph_frame[int(np.round(st)): int(np.round(ed))] = ph_id
-
-            # ph_mask: [vocab_size]
-            ph_mask = np.zeros(vocab["vocab_size"], dtype="int32")
-            if len(ph_id_seq) > 0:
-                ph_mask[ph_id_seq] = 1
-            ph_mask[0] = 1
-        else:
+        if len(ph_id_seq) <= 0:
             return None, None, None, None, None
+
+        ph_edge = np.zeros([T], dtype="float32")
+        if len(ph_id_seq) > 0:
+            if ph_frame[-1] + 0.5 > T:
+                ph_frame = ph_frame[:-1]
+            if ph_frame[0] - 0.5 < 0:
+                ph_frame = ph_frame[1:]
+            ph_time_int = np.round(ph_frame).astype("int32")
+            ph_time_fractional = ph_frame - ph_time_int
+
+            ph_edge[ph_time_int] = 0.5 + ph_time_fractional
+            ph_edge[ph_time_int - 1] = 0.5 - ph_time_fractional
+            ph_edge = ph_edge * 0.8 + 0.1
+
+        # ph_frame: [T]
+        ph_frame = np.zeros(T, dtype="int32")
+        if len(ph_id_seq) > 0:
+            for ph_id, st, ed in zip(
+                    ph_id_seq, ph_interval[0], ph_interval[1]
+            ):
+                if st < 0:
+                    st = 0
+                if ed > T:
+                    ed = T
+                ph_frame[int(np.round(st)): int(np.round(ed))] = ph_id
+
+        # ph_mask: [vocab_size]
+        ph_mask = np.zeros(vocab["vocab_size"], dtype="int32")
+        if len(ph_id_seq) > 0:
+            ph_mask[ph_id_seq] = 1
+        ph_mask[0] = 1
+
         return ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time
 
     def make_non_speech_ph_data(self, T, ph_id_seq, ph_duration):
         if len(ph_id_seq) == 0:
-            return None, None
+            return np.zeros((len(self.vocab.keys()) + 1, T), dtype="int32"), []
 
         ph_id_seq = np.array(ph_id_seq, dtype="int32")
         ph_dur = np.array(ph_duration, dtype="float32")
@@ -394,13 +354,10 @@ class ForcedAlignmentBinarizer:
             if power_curve.shape[0] != n_frames:
                 print(f"Skipping {wav_path}, make power_curve failed.")
 
-            label_type_id = {"blank": 0, "weak": 1, "full": 2, "evaluate": 3}[_item.label_type]
-            if label_type_id >= 2:
-                if len(_item.ph_dur) != len(_item.ph_id_seq): label_type_id = 1
-                if not _item.ph_id_seq: label_type_id = 0
-
+            if len(_item.ph_id_seq) == 0 or len(_item.ph_dur) != len(_item.ph_id_seq):
+                return None
             ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
-                self.vocab, n_frames, label_type_id, _item.ph_id_seq, _item.ph_dur
+                self.vocab, n_frames, _item.ph_id_seq, _item.ph_dur
             )
             if ph_id_seq is None:
                 print(f"Skipping {wav_path}, make ph data failed.")
@@ -444,7 +401,6 @@ class ForcedAlignmentBinarizer:
                 'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
                 'ph_seq_raw': _item.ph_seq,
                 'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0],
-                "label_type": label_type_id,
                 "non_speech_target": non_speech_target.astype("int32"),
                 "non_speech_intervals": non_speech_intervals.astype("int32"),
                 "wav_length": wav_length
@@ -464,34 +420,25 @@ class ForcedAlignmentBinarizer:
             test_prefixes = dataset.get("test_prefixes", [])
 
             assert raw_data_dir.exists(), f"{raw_data_dir} does not exist."
-            assert label_type in ["full", "weak", "evaluate", "blank"], \
-                f"{label_type} not in ['full', 'weak', 'evaluate','blank]."
-            if label_type == "blank":
-                df = pd.DataFrame(
-                    columns=["name", "ph_seq", "ph_id_seq", "label_type", "wav_length", "validation"])
-                wavs_path = [i for i in raw_data_dir.rglob("*.wav")]
-                df["wav_path"] = wavs_path
-                df["name"] = df["wav_path"].apply(lambda wav_path: os.path.splitext(os.path.basename(wav_path)))
-                df["wav_length"] = 0
-                df["validation"] = False
+            assert label_type in ["full", "evaluate"], \
+                f"{label_type} not in ['full','evaluate']."
+
+            tuple_prefixes = tuple([x for x in test_prefixes if x] if test_prefixes is not None else [])
+
+            csv_path = raw_data_dir / "transcriptions.csv"
+            wav_folder = raw_data_dir / "wavs"
+            assert csv_path.exists() and wav_folder.exists(), f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
+
+            df = pd.read_csv(csv_path, dtype=str)
+            assert "ph_seq" in df.columns, f"{csv_path.absolute()} does not contain 'ph_seq'."
+            assert "ph_dur" in df.columns, f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
+
+            if len(tuple_prefixes) > 0:
+                df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
             else:
-                tuple_prefixes = tuple([x for x in test_prefixes if x] if test_prefixes is not None else [])
+                df["validation"] = False
 
-                csv_path = raw_data_dir / "transcriptions.csv"
-                wav_folder = raw_data_dir / "wavs"
-                assert csv_path.exists() and wav_folder.exists(), f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
-
-                df = pd.read_csv(csv_path, dtype=str)
-                assert "ph_seq" in df.columns, f"{csv_path.absolute()} does not contain 'ph_seq'."
-                if label_type == "full":
-                    assert "ph_dur" in df.columns, f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
-
-                if len(tuple_prefixes) > 0:
-                    df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes))
-                else:
-                    df["validation"] = False
-
-                df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
+            df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
 
             df["label_type"] = label_type
             df["ph_seq"] = df["ph_seq"].apply(
