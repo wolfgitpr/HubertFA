@@ -15,6 +15,7 @@ from tools.encoder import UnitsEncoder
 from tools.get_melspec import MelSpecExtractor
 from tools.load_wav import load_wav
 from tools.multiprocess_utils import chunked_multiprocess_run
+from tools.pitch_util import get_pitch_parselmouth
 from tools.power_calculator import compute_power_curve
 
 unitsEncoder = None
@@ -354,6 +355,15 @@ class ForcedAlignmentBinarizer:
             if power_curve.shape[0] != n_frames:
                 print(f"Skipping {wav_path}, make power_curve failed.")
 
+            waveform_np = waveform.mean(dim=0).cpu().numpy() if waveform.dim() > 1 else waveform.cpu().numpy()
+            pitch_curve, _ = get_pitch_parselmouth(
+                waveform_np, self.sample_rate, n_frames,
+                hop_size=self.hop_size,
+                f0_min=65, f0_max=1100, interp_uv=True
+            )
+
+            curves = np.stack([power_curve.cpu().numpy(), pitch_curve], axis=-1)  # [T, 2]
+
             if len(_item.ph_id_seq) == 0 or len(_item.ph_dur) != len(_item.ph_id_seq):
                 return None
             ph_id_seq, ph_edge, ph_frame, ph_mask, ph_time = self.make_ph_data(
@@ -391,7 +401,7 @@ class ForcedAlignmentBinarizer:
             return {
                 'name': str(_item["name"]),
                 'input_feature': units.cpu().numpy().astype("float32"),
-                'power_curve': power_curve.cpu().numpy().astype("float32"),
+                'curves': curves.astype("float32"),
                 'melspec': melspec.cpu().numpy().astype("float32") if export_mel else np.array([0]),
                 'ph_id_seq': ph_id_seq.astype("int32"),
                 'ph_edge': ph_edge.astype("float32"),

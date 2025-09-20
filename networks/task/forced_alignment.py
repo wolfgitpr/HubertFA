@@ -1,6 +1,7 @@
 import random
 
 import lightning as pl
+import numpy as np
 import textgrid
 import torch
 import torch.nn as nn
@@ -12,7 +13,7 @@ from evaluate import remove_ignored_phonemes, quantize_tier
 from networks.layer.backbone.cvnt import CVNT
 from networks.layer.backbone.unet import UNetBackbone
 from networks.layer.block.resnet_block import ResidualBasicBlock
-from networks.layer.fusion.power_curve_fusion import PowerCurveEdgeFusion
+from networks.layer.fusion.curves_fusion import DualCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
@@ -20,6 +21,7 @@ from tools.alignment_decoder import AlignmentDecoder
 from tools.encoder import UnitsEncoder
 from tools.load_wav import load_wav
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
+from tools.pitch_util import get_pitch_parselmouth
 from tools.power_calculator import compute_power_curve
 
 
@@ -76,11 +78,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.cvnt = CVNT(config['cvnt_arg'], in_channels=self.hubert_config['channel'],
                          output_size=self.num_classes)
 
-        self.power_edge_fusion = PowerCurveEdgeFusion(
+        self.curves_edge_fusion = DualCurveEdgeFusion(
             feature_dim=model_config["hidden_dims"],
-            power_dim=1,
             hidden_dim=64,
-            dropout=model_config.get("power_attention_dropout", 0.1)
+            dropout=model_config.get("curves_attention_dropout", 0.1)
         )
 
         self.losses_names = [
@@ -197,13 +198,22 @@ class LitForcedAlignmentTask(pl.LightningModule):
             self.melspec_config["sample_rate"], self.melspec_config["hop_length"], n_frames, self.device
         )
 
+        waveform_np = waveform.mean(dim=0).cpu().numpy() if waveform.dim() > 1 else waveform.cpu().numpy()
+        pitch_curve, _ = get_pitch_parselmouth(
+            waveform_np, self.sample_rate, n_frames,
+            hop_size=self.hop_size,
+            f0_min=65, f0_max=1100, interp_uv=True
+        )
+
+        curves = np.stack([power_curve.cpu().numpy(), pitch_curve], axis=-1)  # [T, 2]
+
         with torch.no_grad():
             (
                 ph_frame_logits,  # (B, T, vocab_size)
                 ph_edge_logits,  # (B, T)
                 ctc_logits,  # (B, T, vocab_size)
                 cvnt_logits,  # [B,N,T]
-            ) = self.forward(input_feature, power_curve)
+            ) = self.forward(input_feature, curves)
 
         words, confidence = self.decoder.decode(
             ph_frame_logits.float().cpu().numpy(),
@@ -330,14 +340,14 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def forward(self,
                 x,  # [B, T, C]
-                power_curve  # [B, T, 1]
+                curves  # [B, T, 1]
                 ):
         cvnt_logits = self.cvnt(x)  # [B, N, T]
         x = self.backbone(x)  # [B, T, hidden_dims]
         logits = self.head(x)  # [B, T, vocab_size + 2]
         ph_frame_logits = logits[:, :, 2:]  # [B, T, vocab_size]
 
-        edge_enhancement = self.power_edge_fusion(x, power_curve)  # [B, T, 1]
+        edge_enhancement = self.curves_edge_fusion(x, curves)  # [B, T, 1]
         ph_edge_logits = logits[:, :, 0] + edge_enhancement.squeeze(-1)  # [B, T]
 
         ctc_logits = torch.cat([logits[:, :, [1]], logits[:, :, 3:]], dim=-1)  # [B, T, vocab_size]
@@ -361,10 +371,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_time_raw,
                 non_speech_target,
                 non_speech_intervals,  # [B,N,T]
-                power_curve,  # [B, T]
+                curves,  # [B, T, 2]
             ) = batch
-
-            power_curve = power_curve.unsqueeze(-1)  # [B, T, 1]
 
             non_speech_mask = self.make_non_speech_mask(input_feature.shape, non_speech_intervals)
             masked_input = torch.where(
@@ -383,7 +391,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 ph_edge_logits,  # (B, T)
                 ctc_logits,  # (B, T, vocab_size)
                 cvnt_logits,  # [B,N,T]
-            ) = self.forward(masked_input, power_curve)
+            ) = self.forward(masked_input, curves)
 
             losses = self._get_loss(
                 ph_frame_logits,
@@ -489,17 +497,15 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_time_raw,
             non_speech_target,
             non_speech_intervals,
-            power_curves,  # [B, T]
+            curves,  # [B, T, 2]
         ) = batch
-
-        power_curves = power_curves.unsqueeze(-1)  # [B, T, 1]
 
         (
             ph_frame_logits,  # (B, T, vocab_size)-
             ph_edge_logits,  # (B, T)
             ctc_logits,  # (B, T, vocab_size)
             cvnt_logits,  # [B,N,T]
-        ) = self.forward(input_feature, power_curves)
+        ) = self.forward(input_feature, curves)
 
         ph_seq_g2p = []
         last_ph = ""

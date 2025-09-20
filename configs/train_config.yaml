@@ -35,7 +35,7 @@ cvnt_arg:
   encoder_conform_kernel_size: 23
 
 optimizer_config:
-  lr: 0.0005
+  lr: 0.0003
   gamma: 0.9999
   total_steps: 20000
   muon_args:
@@ -45,7 +45,7 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 8.0, 0.1, 1.0, 2.0, 10.0 ]
+    weights: [ 8.0, 0.1, 1.0, 6.0, 10.0 ]
     enable_RampUpScheduler: [ False,False,False,True,False ]
   function:
     num_bins: 10

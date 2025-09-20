@@ -92,8 +92,8 @@ class MixedDataset(torch.utils.data.Dataset):
         ph_time_raw = np.array(item["ph_time_raw"])
         non_speech_target = np.array(item["non_speech_target"])
         non_speech_intervals = np.array(item["non_speech_intervals"])
-        power_curve = np.array(item["power_curve"])
-        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, melspec, ph_time, name, ph_seq_raw, ph_time_raw, non_speech_target, non_speech_intervals, power_curve
+        curves = np.array(item["curves"])
+        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, melspec, ph_time, name, ph_seq_raw, ph_time_raw, non_speech_target, non_speech_intervals, curves
 
 
 class BinningAudioBatchSampler(torch.utils.data.Sampler):
@@ -260,9 +260,9 @@ def collate_fn(batch):
             mode='constant',
             value=0
         )
-        power_curve = torch.nn.functional.pad(
+        curves = torch.nn.functional.pad(
             torch.as_tensor(item[13]),
-            (0, max_len - item[13].shape[-1]),
+            (0, 0, max_len - item[13].shape[0], 0),
             mode='constant',
             value=0
         )
@@ -288,7 +288,7 @@ def collate_fn(batch):
             ph_time_raw,
             non_speech_target,
             non_speech_interval,
-            power_curve,
+            curves,
         ))
 
     # Concatenate/stack tensors efficiently
@@ -305,7 +305,7 @@ def collate_fn(batch):
     ph_time_raws = [x[10] for x in padded_batch]
     non_speech_target = torch.cat([x[11] for x in padded_batch], dim=0)  # (B, N, T)
     non_speech_intervals = [x[12] for x in padded_batch]  # (B, N, T)
-    power_curves = torch.stack([x[13] for x in padded_batch])
+    curves = torch.stack([x[13] for x in padded_batch])
 
     return (
         input_features,
@@ -323,5 +323,5 @@ def collate_fn(batch):
         ph_time_raws,
         non_speech_target,
         non_speech_intervals,
-        power_curves
+        curves
     )
