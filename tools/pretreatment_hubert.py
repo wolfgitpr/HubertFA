@@ -7,8 +7,8 @@ import torch
 import tqdm
 
 from config_utils import load_yaml
+from tools.binarize_util import load_wav
 from tools.encoder import UnitsEncoder
-from tools.load_wav import load_wav
 
 
 @click.command()
@@ -33,7 +33,7 @@ def pretreatment_hubert(config: str):
 
     sample_rate = config['melspec_config']["sample_rate"]
     max_length = config['max_length']
-    hop_size = config['melspec_config']["hop_length"]
+    hop_size = config['melspec_config']["hop_size"]
     hubert_channel = config['hubert_config']["channel"]
 
     all_wav_paths = []
@@ -52,13 +52,9 @@ def pretreatment_hubert(config: str):
 
             npy_path = pathlib.Path(wav_path).with_suffix(".npy")
             if not os.path.exists(npy_path):
-                waveform = load_wav(wav_path, device, sample_rate)  # (L,)
-
-                wav_length = len(waveform) / sample_rate  # seconds
+                waveform, wav_length, n_frames = load_wav(wav_path, sample_rate, hop_size, device)  # (L,) seconds
                 if wav_length > max_length:
-                    print(
-                        f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it."
-                    )
+                    print(f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it.")
 
                 # units encode
                 units = unitsEncoder.forward(waveform.unsqueeze(0), sample_rate, hop_size)  # [B, T, C]

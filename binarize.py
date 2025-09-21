@@ -9,14 +9,12 @@ import torch
 import yaml
 from tqdm import tqdm
 
+from tools.binarize_util import load_wav, get_curves
 from tools.config_utils import load_yaml
 from tools.dataset import IndexedDatasetBuilder
 from tools.encoder import UnitsEncoder
 from tools.get_melspec import MelSpecExtractor
-from tools.load_wav import load_wav
 from tools.multiprocess_utils import chunked_multiprocess_run
-from tools.pitch_util import get_pitch_parselmouth
-from tools.power_calculator import compute_power_curve
 
 unitsEncoder = None
 get_melspec = None
@@ -58,10 +56,11 @@ class ForcedAlignmentBinarizer:
         self.max_length = binary_config['max_length']
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.hop_size = self.melspec_config["hop_size"]
+        self.window_size = self.melspec_config["window_size"]
         self.sample_rate = self.melspec_config["sample_rate"]
-        self.frame_length = self.melspec_config["hop_length"] / self.sample_rate
+        self.frame_length = self.hop_size / self.sample_rate
 
-        self.hop_size = binary_config['melspec_config']["hop_length"]
         self.hubert_channel = binary_config['hubert_config']["channel"]
 
     def get_vocab(self):
@@ -338,31 +337,13 @@ class ForcedAlignmentBinarizer:
                 print(f"Skipping {wav_path}, because it doesn't exist")
                 return None
 
-            waveform = load_wav(wav_path, self.device, self.sample_rate)  # (L,)
-            wav_length = len(waveform) / self.sample_rate  # seconds
+            waveform, wav_length, n_frames = load_wav(wav_path, self.sample_rate, self.hop_size,
+                                                      self.device)  # (L,) seconds
             if wav_length > self.max_length:
-                print(
-                    f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it."
-                )
+                print(f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it.")
                 return None
-            n_frames = waveform.size(-1) // self.hop_size + 1
 
-            power_curve = compute_power_curve(
-                waveform.mean(dim=0) if waveform.dim() > 1 else waveform,
-                self.sample_rate, self.hop_size, n_frames, self.device
-            )
-
-            if power_curve.shape[0] != n_frames:
-                print(f"Skipping {wav_path}, make power_curve failed.")
-
-            waveform_np = waveform.mean(dim=0).cpu().numpy() if waveform.dim() > 1 else waveform.cpu().numpy()
-            pitch_curve, _ = get_pitch_parselmouth(
-                waveform_np, self.sample_rate, n_frames,
-                hop_size=self.hop_size,
-                f0_min=65, f0_max=1100, interp_uv=True
-            )
-
-            curves = np.stack([power_curve.cpu().numpy(), pitch_curve], axis=-1)  # [T, 2]
+            curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [C, T]
 
             if len(_item.ph_id_seq) == 0 or len(_item.ph_dur) != len(_item.ph_id_seq):
                 return None
@@ -401,7 +382,7 @@ class ForcedAlignmentBinarizer:
             return {
                 'name': str(_item["name"]),
                 'input_feature': units.cpu().numpy().astype("float32"),
-                'curves': curves.astype("float32"),
+                'curves': curves.cpu().numpy().astype("float32"),
                 'melspec': melspec.cpu().numpy().astype("float32") if export_mel else np.array([0]),
                 'ph_id_seq': ph_id_seq.astype("int32"),
                 'ph_edge': ph_edge.astype("float32"),

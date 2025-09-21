@@ -25,6 +25,8 @@ model:
   down_sampling_times: 3
   channels_scaleup_factor: 1.5
 
+  curves_attention_dropout: 0.1
+
 cvnt_arg:
   mask_ratio: 0.2
   encoder_conform_attention_drop: 0.05

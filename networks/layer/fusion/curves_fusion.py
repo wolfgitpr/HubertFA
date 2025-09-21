@@ -2,57 +2,28 @@ import torch
 import torch.nn as nn
 
 
-class DualCurveProcessor(nn.Module):
+class PowerCurveProcessor(nn.Module):
     def __init__(self, hidden_dim=32, output_dim=1):
         super().__init__()
 
-        # Power branch with residual connections and normalization
         self.power_branch = nn.Sequential(
-            nn.Conv1d(1, hidden_dim // 2, kernel_size=5, padding=2),
-            nn.InstanceNorm1d(hidden_dim // 2),
+            nn.Conv1d(1, hidden_dim, kernel_size=5, padding=2),
+            nn.InstanceNorm1d(hidden_dim),
             nn.SiLU(),
-            ResidualBlock(hidden_dim // 2, hidden_dim // 2, kernel_size=3, padding=1)
+            ResidualBlock(hidden_dim, hidden_dim, kernel_size=3, padding=1)
         )
 
-        # Pitch branch with residual connections and normalization
-        self.pitch_branch = nn.Sequential(
-            nn.Conv1d(1, hidden_dim // 2, kernel_size=7, padding=3),
-            nn.InstanceNorm1d(hidden_dim // 2),
-            nn.SiLU(),
-            ResidualBlock(hidden_dim // 2, hidden_dim // 2, kernel_size=5, padding=2)
-        )
-
-        # Fusion module with residual connections and normalization
         self.fusion = nn.Sequential(
             ResidualBlock(hidden_dim, hidden_dim, kernel_size=3, padding=1),
             nn.Conv1d(hidden_dim, output_dim, kernel_size=1)
         )
 
-        # Dynamic weight estimation
-        self.dynamic_weight = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
-            nn.Conv1d(output_dim, output_dim // 2, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv1d(output_dim // 2, 2, kernel_size=1),
-            nn.Softmax(dim=1)
-        )
-
-    def forward(self, x):  # [B, T, 2]
-        x = x.transpose(1, 2)  # [B, 2, T]
-
-        # Process each curve separately
-        power_processed = self.power_branch(x[:, 0:1, :])  # [B, hidden_dim//2, T]
-        pitch_processed = self.pitch_branch(x[:, 1:2, :])  # [B, hidden_dim//2, T]
-
-        # Combine and fuse
-        combined = torch.cat([power_processed, pitch_processed], dim=1)  # [B, hidden_dim, T]
-        output = self.fusion(combined)  # [B, output_dim, T]
-
-        # Apply dynamic weighting
-        weights = self.dynamic_weight(output)  # [B, 2, 1]
-        weighted_output = output * weights[:, 0:1, :]
-
-        return weighted_output.transpose(1, 2)  # [B, T, output_dim]
+    def forward(self,
+                x,  # [B, C, T]
+                ):
+        power_processed = self.power_branch(x[:, 0:1, :])  # [B, hidden_dim, T]
+        output = self.fusion(power_processed)  # [B, output_dim, T]
+        return output.transpose(1, 2)  # [B, T, output_dim]
 
 
 class ResidualBlock(nn.Module):
@@ -104,13 +75,13 @@ class ResidualBlock(nn.Module):
         return out
 
 
-class DualCurveEdgeFusion(nn.Module):
+class PowerCurveEdgeFusion(nn.Module):
     def __init__(self, feature_dim, hidden_dim=64, dropout=0.1):
         super().__init__()
         self.feature_dim = feature_dim
 
-        self.curve_processor = DualCurveProcessor(
-            hidden_dim=hidden_dim // 2,
+        self.curve_processor = PowerCurveProcessor(
+            hidden_dim=hidden_dim,
             output_dim=hidden_dim
         )
 
@@ -135,7 +106,10 @@ class DualCurveEdgeFusion(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x, curves):
+    def forward(self,
+                x,  # [B, T, hidden_dims]
+                curves,  # [B, 1, T]
+                ):
         curve_features = self.curve_processor(curves)  # [B, T, hidden_dim]
         feature_proj = self.feature_proj(x)  # [B, T, hidden_dim]
 
@@ -144,5 +118,4 @@ class DualCurveEdgeFusion(nn.Module):
 
         fused_features = torch.cat([gated_features, curve_features], dim=-1)
         edge_enhancement = self.fusion_output(fused_features)
-
         return edge_enhancement  # [B, T, 1]

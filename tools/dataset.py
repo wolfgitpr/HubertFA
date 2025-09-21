@@ -262,7 +262,7 @@ def collate_fn(batch):
         )
         curves = torch.nn.functional.pad(
             torch.as_tensor(item[13]),
-            (0, 0, max_len - item[13].shape[0], 0),
+            (0, max_len - item[13].shape[-1]),
             mode='constant',
             value=0
         )

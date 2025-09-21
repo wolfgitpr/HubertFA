@@ -20,11 +20,12 @@ def log_softmax(x, axis=-1):
 
 
 class AlignmentDecoder:
-    def __init__(self, vocab, class_names, melspec_config):
+    def __init__(self, vocab, class_names, sample_rate, hop_size):
         self.vocab = vocab
         self.non_speech_phs: list[str] = class_names
-        self.melspec_config = melspec_config
-        self.frame_length = self.melspec_config["hop_length"] / (self.melspec_config["sample_rate"])
+        self.sample_rate = sample_rate
+        self.hop_size = hop_size
+        self.frame_length = self.hop_size / self.sample_rate
 
         self.ph_seq_id = None
         self.ph_idx_seq = None
@@ -63,8 +64,7 @@ class AlignmentDecoder:
             ph_idx_to_word_idx = np.arange(len(ph_seq))
 
         if wav_length is not None:
-            num_frames = int(
-                (wav_length * self.melspec_config["sample_rate"] + 0.5) / self.melspec_config["hop_length"])
+            num_frames = int((wav_length * self.sample_rate + 0.5) / self.hop_size)
             ph_frame_logits = ph_frame_logits[:, :num_frames, :]
             ph_edge_logits = ph_edge_logits[:, :num_frames]
             cvnt_logits = cvnt_logits[:, :, :num_frames]

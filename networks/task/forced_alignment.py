@@ -1,7 +1,6 @@
 import random
 
 import lightning as pl
-import numpy as np
 import textgrid
 import torch
 import torch.nn as nn
@@ -13,16 +12,14 @@ from evaluate import remove_ignored_phonemes, quantize_tier
 from networks.layer.backbone.cvnt import CVNT
 from networks.layer.backbone.unet import UNetBackbone
 from networks.layer.block.resnet_block import ResidualBasicBlock
-from networks.layer.fusion.curves_fusion import DualCurveEdgeFusion
+from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
 from tools.alignment_decoder import AlignmentDecoder
+from tools.binarize_util import load_wav, get_curves
 from tools.encoder import UnitsEncoder
-from tools.load_wav import load_wav
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
-from tools.pitch_util import get_pitch_parselmouth
-from tools.power_calculator import compute_power_curve
 
 
 class LitForcedAlignmentTask(pl.LightningModule):
@@ -44,7 +41,11 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.hubert_config: dict = hubert_config
         self.optimizer_config: dict = optimizer_config
         self.config: dict = config
-        self.frame_length: float = melspec_config['hop_length'] / melspec_config['sample_rate']
+
+        self.hop_size = self.melspec_config["hop_size"]
+        self.window_size = self.melspec_config["window_size"]
+        self.sample_rate = self.melspec_config["sample_rate"]
+        self.frame_length = self.hop_size / self.sample_rate
 
         self.non_speech_target: list = self.vocab["non_speech_phonemes"]
         self.non_speech_mask_ratio: float = self.config["cvnt_arg"]["mask_ratio"]
@@ -78,10 +79,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.cvnt = CVNT(config['cvnt_arg'], in_channels=self.hubert_config['channel'],
                          output_size=self.num_classes)
 
-        self.curves_edge_fusion = DualCurveEdgeFusion(
+        self.curves_edge_fusion = PowerCurveEdgeFusion(
             feature_dim=model_config["hidden_dims"],
             hidden_dim=64,
-            dropout=model_config.get("curves_attention_dropout", 0.1)
+            dropout=model_config["curves_attention_dropout"]
         )
 
         self.losses_names = [
@@ -127,7 +128,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.CTC_GHM_loss_fn = CTCGHMLoss(alpha=1 - 1e-3)
 
         self.unitsEncoder = None
-        self.decoder = AlignmentDecoder(self.vocab, self.class_names, self.melspec_config)
+        self.decoder = AlignmentDecoder(self.vocab, self.class_names, self.sample_rate, self.hop_size)
 
         # validation_step_outputs
         self.validation_step_outputs = {"losses": [], "tiers-0": [], "tiers-1": []}
@@ -188,24 +189,11 @@ class LitForcedAlignmentTask(pl.LightningModule):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_speech_phonemes = batch
         ph_seq = [f"{language}/{ph}" if ph not in self.silent_phonemes and self.language_prefix else ph for ph in
                   ph_seq]
-        waveform = load_wav(wav_path, self.device, self.melspec_config["sample_rate"])
-        wav_length = waveform.shape[0] / self.melspec_config["sample_rate"]
-        input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
-                                                  self.melspec_config["hop_length"])  # [B, T, C]
-        n_frames = waveform.size(-1) // self.melspec_config["hop_length"] + 1
-        power_curve = compute_power_curve(
-            waveform.mean(dim=0) if waveform.dim() > 1 else waveform,
-            self.melspec_config["sample_rate"], self.melspec_config["hop_length"], n_frames, self.device
-        )
-
-        waveform_np = waveform.mean(dim=0).cpu().numpy() if waveform.dim() > 1 else waveform.cpu().numpy()
-        pitch_curve, _ = get_pitch_parselmouth(
-            waveform_np, self.sample_rate, n_frames,
-            hop_size=self.hop_size,
-            f0_min=65, f0_max=1100, interp_uv=True
-        )
-
-        curves = np.stack([power_curve.cpu().numpy(), pitch_curve], axis=-1)  # [T, 2]
+        waveform, wav_length, n_frames = load_wav(wav_path, self.sample_rate, self.hop_size,
+                                                  self.device)  # (L,) seconds
+        input_feature = self.unitsEncoder.forward(waveform, self.melspec_config["sample_rate"],
+                                                  self.melspec_config["hop_size"])  # [B, T, C]
+        curves = get_curves(wav_path, n_frames, self.window_size, self.hop_size, device=self.device)  # [C, T]
 
         with torch.no_grad():
             (
@@ -340,7 +328,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def forward(self,
                 x,  # [B, T, C]
-                curves  # [B, T, 1]
+                curves  # [B, C, T]
                 ):
         cvnt_logits = self.cvnt(x)  # [B, N, T]
         x = self.backbone(x)  # [B, T, hidden_dims]
