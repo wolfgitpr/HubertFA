@@ -191,6 +191,14 @@ class BinningAudioBatchSampler(torch.utils.data.Sampler):
         return self.total_batches
 
 
+def pad_1d(x, target_length):
+    return torch.nn.functional.pad(torch.as_tensor(x), (0, target_length - len(x)), mode='constant', value=0)
+
+
+def pad_2d(x, target_length, dim=-1):
+    return torch.nn.functional.pad(torch.as_tensor(x), (0, target_length - x.shape[dim]), mode='constant', value=0)
+
+
 def collate_fn(batch):
     """Collate function for processing a batch of data samples.
 
@@ -216,112 +224,42 @@ def collate_fn(batch):
 
     padded_batch = []
     for item in batch:
-        # Pad each element in the sample
-        input_feature = torch.nn.functional.pad(
-            torch.as_tensor(item[0]),
-            (0, 0, 0, max_len - item[0].shape[-2], 0, 0),
-            mode='constant',
-            value=0
-        )
-        melspec = torch.nn.functional.pad(
-            torch.as_tensor(item[6]),
-            (0, max_len - item[6].shape[-1]),
-            mode='constant',
-            value=0
-        )
-
-        ph_id_seq = torch.nn.functional.pad(
-            torch.as_tensor(item[2]),
-            (0, max_ph_seq_len - len(item[2])),
-            mode='constant',
-            value=0
-        )
-        ph_edge = torch.nn.functional.pad(
-            torch.as_tensor(item[3]),
-            (0, max_len - len(item[3])),
-            mode='constant',
-            value=0
-        )
-        ph_frame = torch.nn.functional.pad(
-            torch.as_tensor(item[4]),
-            (0, max_len - len(item[4])),
-            mode='constant',
-            value=0
-        )
-        ph_time = torch.nn.functional.pad(
-            torch.as_tensor(item[7]),
-            (0, max_ph_seq_len - len(item[7])),
-            mode='constant',
-            value=0
-        )
-        non_speech_target = torch.nn.functional.pad(
-            torch.as_tensor(item[11]),
-            (0, max_len - item[11].shape[-1]),
-            mode='constant',
-            value=0
-        )
-        curves = torch.nn.functional.pad(
-            torch.as_tensor(item[13]),
-            (0, max_len - item[13].shape[-1]),
-            mode='constant',
-            value=0
-        )
-
-        ph_seq = item[1]
-        ph_mask = torch.as_tensor(item[5])
-        name = item[8]
-        ph_seq_raw = item[9]
-        ph_time_raw = item[10]
-        non_speech_interval = item[12]
-
         padded_batch.append((
-            input_feature,
-            ph_seq,
-            ph_id_seq,
-            ph_edge,
-            ph_frame,
-            ph_mask,
-            melspec,
-            ph_time,
-            name,
-            ph_seq_raw,
-            ph_time_raw,
-            non_speech_target,
-            non_speech_interval,
-            curves,
+            torch.nn.functional.pad(
+                torch.as_tensor(item[0]), (0, 0, 0, max_len - item[0].shape[-2], 0, 0), mode='constant', value=0
+            ),  # input_feature
+            item[1],  # ph_seq
+            pad_1d(item[2], max_ph_seq_len),  # ph_id_seq
+            pad_1d(item[3], max_len),  # ph_edge
+            pad_1d(item[4], max_len),  # ph_frame
+            torch.as_tensor(item[5]),  # ph_mask
+            torch.nn.functional.pad(
+                torch.as_tensor(item[6]), (0, max_len - item[6].shape[-1]), mode='constant', value=0
+            ),  # mel_spec
+            pad_1d(item[7], max_ph_seq_len),  # ph_time
+            item[8],  # name
+            item[9],  # ph_seq_raw
+            item[10],  # ph_time_raw
+            pad_2d(item[11], max_len),  # non_speech_target
+            item[12],  # non_speech_interval
+            pad_2d(item[13], max_len),  # curves
         ))
 
-    # Concatenate/stack tensors efficiently
-    input_features = torch.cat([x[0] for x in padded_batch], dim=0)  # (B, C, T)
-    ph_seqs = [x[1] for x in padded_batch]
-    ph_id_seqs = torch.stack([x[2] for x in padded_batch])  # (B, S_ph)
-    ph_edges = torch.stack([x[3] for x in padded_batch])  # (B, T)
-    ph_frames = torch.stack([x[4] for x in padded_batch])  # (B, T)
-    ph_masks = torch.stack([x[5] for x in padded_batch])  # (B, ...)
-    melspecs = torch.cat([x[6] for x in padded_batch], dim=0)  # (B, C_mel, T)
-    ph_times = torch.stack([x[7] for x in padded_batch])  # (B, S_ph)
-    names = [x[8] for x in padded_batch]
-    ph_seq_raws = [x[9] for x in padded_batch]
-    ph_time_raws = [x[10] for x in padded_batch]
-    non_speech_target = torch.cat([x[11] for x in padded_batch], dim=0)  # (B, N, T)
-    non_speech_intervals = [x[12] for x in padded_batch]  # (B, N, T)
-    curves = torch.stack([x[13] for x in padded_batch])
-
     return (
-        input_features,
+        torch.cat([x[0] for x in padded_batch], dim=0),  # input_features (B, C, T)
         input_feature_lengths,
-        ph_seqs,
-        ph_id_seqs,
+        [x[1] for x in padded_batch],  # ph_seqs
+        torch.stack([x[2] for x in padded_batch]),  # ph_id_seqs (B, S_ph)
         ph_seq_lengths,
-        ph_edges,
-        ph_frames,
-        ph_masks,
-        melspecs,
-        ph_times,
-        names,
-        ph_seq_raws,
-        ph_time_raws,
-        non_speech_target,
-        non_speech_intervals,
-        curves
+        torch.stack([x[3] for x in padded_batch]),  # ph_edges (B, T)
+        torch.stack([x[4] for x in padded_batch]),  # ph_frames (B, T)
+        torch.stack([x[5] for x in padded_batch]),  # (B, ...)
+        torch.cat([x[6] for x in padded_batch], dim=0),  # mel_specs (B, C_mel, T)
+        torch.stack([x[7] for x in padded_batch]),  # ph_times (B, S_ph)
+        [x[8] for x in padded_batch],  # names
+        [x[9] for x in padded_batch],  # ph_seq_raws,
+        [x[10] for x in padded_batch],  # ph_time_raws
+        torch.cat([x[11] for x in padded_batch], dim=0),  # non_speech_target (B, N, T)
+        [x[12] for x in padded_batch],  # non_speech_intervals (B, N, T)
+        torch.stack([x[13] for x in padded_batch])  # curves
     )
