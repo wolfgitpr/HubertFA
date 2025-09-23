@@ -69,6 +69,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             down_sampling_factor=model_config["down_sampling_factor"],  # 3
             down_sampling_times=model_config["down_sampling_times"],  # 7
             channels_scaleup_factor=model_config["channels_scaleup_factor"],  # 1.5
+            dropout=model_config["dropout"],
         )
 
         self.head = nn.Linear(
