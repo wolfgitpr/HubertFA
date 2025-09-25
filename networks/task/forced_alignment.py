@@ -194,15 +194,15 @@ class LitForcedAlignmentTask(pl.LightningModule):
                                                   self.device)  # (L,) seconds
         input_feature = self.unitsEncoder.forward(waveform, self.melspec_config["sample_rate"],
                                                   self.melspec_config["hop_size"])  # [B, T, C]
-        curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [C, T]
+        curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [B, C, T]
 
         with torch.no_grad():
             (
                 ph_frame_logits,  # (B, T, vocab_size)
                 ph_edge_logits,  # (B, T)
                 ctc_logits,  # (B, T, vocab_size)
-                cvnt_logits,  # [B,N,T]
-            ) = self.forward(input_feature, curves.unsqueeze(0))
+                cvnt_logits,  # [ B, N, T]
+            ) = self.forward(input_feature, curves)
 
         words, confidence = self.decoder.decode(
             ph_frame_logits.float().cpu().numpy(),

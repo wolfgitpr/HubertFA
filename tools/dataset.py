@@ -242,7 +242,9 @@ def collate_fn(batch):
             item[10],  # ph_time_raw
             pad_2d(item[11], max_len),  # non_speech_target
             item[12],  # non_speech_interval
-            pad_2d(item[13], max_len),  # curves
+            torch.nn.functional.pad(
+                torch.as_tensor(item[13]), (0, max_len - item[13].shape[-1], 0, 0, 0, 0), mode='constant', value=0
+            ),  # input_feature
         ))
 
     return (
@@ -261,5 +263,5 @@ def collate_fn(batch):
         [x[10] for x in padded_batch],  # ph_time_raws
         torch.cat([x[11] for x in padded_batch], dim=0),  # non_speech_target (B, N, T)
         [x[12] for x in padded_batch],  # non_speech_intervals (B, N, T)
-        torch.stack([x[13] for x in padded_batch])  # curves
+        torch.cat([x[13] for x in padded_batch], dim=0)  # curves
     )

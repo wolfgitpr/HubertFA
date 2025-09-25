@@ -343,7 +343,7 @@ class ForcedAlignmentBinarizer:
                 print(f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it.")
                 return None
 
-            curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [C, T]
+            curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [B, C, T]
 
             if len(_item.ph_id_seq) == 0 or len(_item.ph_dur) != len(_item.ph_id_seq):
                 return None
