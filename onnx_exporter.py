@@ -17,6 +17,26 @@ from tools.config_utils import load_yaml
 ONNX_EXPORT_VERSION = 3
 
 
+def change_input_node_name(model, input_names):
+    for i, _input in enumerate(model.graph.input):
+        input_name = input_names[i]
+        for node in model.graph.node:
+            for j, name in enumerate(node.input):
+                if name == _input.name:
+                    node.input[j] = input_name
+        _input.name = input_name
+
+
+def change_output_node_name(model, output_names):
+    for i, output in enumerate(model.graph.output):
+        output_name = output_names[i]
+        for node in model.graph.node:
+            for j, name in enumerate(node.output):
+                if name == output.name:
+                    node.output[j] = output_name
+        output.name = output_name
+
+
 class Resampler(torch.nn.Module):
     def __init__(self, hubert_config, mel_config, device=None):
         super().__init__()
@@ -85,11 +105,11 @@ def export_encoder(encoder_folder, _hubert_config, _mel_config, hubert_path=None
         str(encoder_onnx_path),
         opset_version=17,
         input_names=["waveform"],
-        output_names=["units_aligned", "curves_out"],
+        output_names=["units_aligned", "curves"],
         dynamic_axes={
             "waveform": {1: "n_samples"},
             "units_aligned": {1: "n_samples"},
-            "curves_out": {2: "n_frames"},
+            "curves": {2: "n_frames"},
         }
     )
     onnx_model, check = onnxsim.simplify(encoder_onnx_path, include_subgraph=True)
@@ -99,9 +119,12 @@ def export_encoder(encoder_folder, _hubert_config, _mel_config, hubert_path=None
     return encoder_onnx_path
 
 
-def export_fa_model(_fa_path, ckpt_path, _hubert_config, _melspec_config, device="cpu"):
+def export_fa_model(fa_folder, ckpt_path, _hubert_config, _melspec_config, device="cpu"):
     ckpt_folder = pathlib.Path(ckpt_path).parent
+    _fa_onnx_path = str(pathlib.Path(fa_folder) / "fa.onnx")
+
     model = LitForcedAlignmentTask.load_from_checkpoint(ckpt_path, strict=False).to(device)
+    model.eval()
 
     n_frames = 1000
     input_feature = torch.randn((1, n_frames, _hubert_config["channel"]), dtype=torch.float32,
@@ -112,12 +135,12 @@ def export_fa_model(_fa_path, ckpt_path, _hubert_config, _melspec_config, device
         torch.onnx.export(
             model,
             (input_feature, curves),
-            _fa_path,
-            input_names=['input_feature', 'curves_in'],
+            _fa_onnx_path,
+            input_names=['input_feature', 'curves'],
             output_names=['ph_frame_logits', 'ph_edge_logits', 'ctc_logits', 'cvnt_logits'],
             dynamic_axes={
                 'input_feature': {1: 'n_samples'},
-                'curves_in': {2: 'n_samples'},
+                'curves': {2: 'n_samples'},
                 'ph_frame_logits': {1: 'n_samples'},  # (T, vocab_size)
                 'ph_edge_logits': {1: 'n_samples'},  # (T)
                 'ctc_logits': {1: 'n_samples'},  # (T, vocab_size)
@@ -125,32 +148,40 @@ def export_fa_model(_fa_path, ckpt_path, _hubert_config, _melspec_config, device
             },
             opset_version=17
         )
-        onnx_model, check = onnxsim.simplify(_fa_path, include_subgraph=True)
+        onnx_model, check = onnxsim.simplify(_fa_onnx_path, include_subgraph=True)
         assert check, 'Simplified ONNX model could not be validated'
-        onnx.save(onnx_model, _fa_path)
-        print(f'Predict Model saved to: {_fa_path}')
+        onnx.save(onnx_model, _fa_onnx_path)
+        print(f'Predict Model saved to: {_fa_onnx_path}')
 
         src_files = list(ckpt_folder.glob("*.yaml")) + list(ckpt_folder.glob("*.txt"))
 
         for i in src_files:
-            shutil.copy(str(i), pathlib.Path(_fa_path).parent)
+            shutil.copy(str(i), pathlib.Path(_fa_onnx_path).parent)
 
-        with open(pathlib.Path(_fa_path).parent / 'hparams.yaml', 'w') as f:
+        with open(pathlib.Path(_fa_onnx_path).parent / 'hparams.yaml', 'w') as f:
             yaml.dump(model.hparams, f, default_flow_style=False, allow_unicode=True)
 
-        with open(pathlib.Path(_fa_path).parent / 'VERSION', 'w') as f:
+        with open(pathlib.Path(_fa_onnx_path).parent / 'VERSION', 'w') as f:
             f.write(str(ONNX_EXPORT_VERSION))
-    return _fa_path
+    return _fa_onnx_path
 
 
 def merge_model(merged_path, encoder_path, fa_path):
+    encoder = onnx.load(encoder_path)
+    encoder = onnx.compose.add_prefix(encoder, prefix="encoder/")
+
+    fa_model = onnx.load(fa_path)
+    fa_model = onnx.compose.add_prefix(fa_model, prefix="fa/")
+
     final_model = onnx.compose.merge_models(
-        onnx.load(encoder_path), onnx.load(fa_path),
+        encoder, fa_model,
         io_map=[
-            ("units_aligned", "input_feature"),
-            ("curves_out", "curves_in")
+            ("encoder/units_aligned", "fa/input_feature"),
+            ("encoder/curves", "fa/curves")
         ]
     )
+    change_input_node_name(final_model, ["waveform"])
+    change_output_node_name(final_model, ['ph_frame_logits', 'ph_edge_logits', 'ctc_logits', 'cvnt_logits'])
     onnx.save(final_model, merged_path)
 
     onnx_model, check = onnxsim.simplify(merged_path, include_subgraph=True)
@@ -184,7 +215,7 @@ def export(ckpt_path, hubert_path, onnx_folder):
 
     encoder_path = export_encoder(onnx_folder, config["hubert_config"], config["melspec_config"],
                                   hubert_path=hubert_path)
-    fa_path = export_fa_model(onnx_path, ckpt_path, config["hubert_config"], config["melspec_config"])
+    fa_path = export_fa_model(onnx_folder, ckpt_path, config["hubert_config"], config["melspec_config"])
 
     merged_path = str(onnx_folder / "model.onnx")
     merge_model(merged_path, encoder_path, fa_path)
