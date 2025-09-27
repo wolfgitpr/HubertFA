@@ -68,4 +68,4 @@ class Audio2CNHubert(torch.nn.Module):
     def forward(self,
                 audio):  # B, T
         with torch.inference_mode():
-            return self.model(audio.unsqueeze(0))["last_hidden_state"]  # [1, T, C]
+            return self.model(audio)["last_hidden_state"]  # [1, T, C]

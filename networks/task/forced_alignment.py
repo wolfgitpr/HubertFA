@@ -192,7 +192,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
                   ph_seq]
         waveform, wav_length, n_frames = load_wav(wav_path, self.sample_rate, self.hop_size,
                                                   self.device)  # (L,) seconds
-        input_feature = self.unitsEncoder.forward(waveform, self.melspec_config["sample_rate"],
+        input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
                                                   self.melspec_config["hop_size"])  # [B, T, C]
         curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [B, C, T]
 
