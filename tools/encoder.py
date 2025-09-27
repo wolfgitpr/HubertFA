@@ -3,7 +3,7 @@ import pathlib
 
 import torch
 from torchaudio.transforms import Resample
-from transformers import Wav2Vec2FeatureExtractor, HubertModel
+from transformers import HubertModel
 
 
 class UnitsEncoder(torch.nn.Module):
@@ -14,7 +14,7 @@ class UnitsEncoder(torch.nn.Module):
         self.device = device
         self.mel_config = mel_config
 
-        self.encoder = hubert_config.get("encoder", "cnhubert")
+        self.encoder = hubert_config["encoder"]
         if encoder_ckpt is None:
             encoder_ckpt = hubert_config.get("model_path", None)
 
@@ -25,8 +25,8 @@ class UnitsEncoder(torch.nn.Module):
         assert is_loaded_encoder, f" [x] Unknown units encoder: {self.encoder}"
 
         self.resample_kernel = {}
-        self.encoder_sample_rate = hubert_config.get("sample_rate", 16000)
-        self.encoder_hop_size = hubert_config.get("hop_size", 320)
+        self.encoder_sample_rate: int = hubert_config["sample_rate"]
+        self.encoder_hop_size: int = hubert_config["hop_size"]
 
     def forward(self,
                 audio,  # B, T
@@ -64,12 +64,8 @@ class Audio2CNHubert(torch.nn.Module):
             path = str(pathlib.Path(path).parent)
         self.model = HubertModel.from_pretrained(path, local_files_only=True).to(device)
         self.model.eval()
-        self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
-            path, local_files_only=True)
 
     def forward(self,
                 audio):  # B, T
         with torch.inference_mode():
-            input_values = self.feature_extractor(audio, return_tensors="pt",
-                                                  sampling_rate=16000).input_values.to(audio.device).squeeze(1)
-            return self.model(input_values)["last_hidden_state"]  # [1, T, C]
+            return self.model(audio)["last_hidden_state"]  # [1, T, C]

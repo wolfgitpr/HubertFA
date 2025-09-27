@@ -1,9 +1,4 @@
-import torch
-import torch.nn as nn
-
-from networks.layer.block.resnet_block import ResidualBasicBlock
-from networks.layer.scaling.base import BaseDowmSampling, BaseUpSampling
-from networks.layer.scaling.stride_conv import DownSampling, UpSampling
+from torch import nn
 
 
 class UNetBackbone(nn.Module):
@@ -18,6 +13,7 @@ class UNetBackbone(nn.Module):
             down_sampling_factor: int = 2,
             down_sampling_times: int = 5,
             channels_scaleup_factor: int = 2,
+            dropout: float = 0.1,
     ):
         """_summary_
 
@@ -30,9 +26,6 @@ class UNetBackbone(nn.Module):
             up_sampling (nn.Module): shape: (B, T, C) -> shape: (B, T*down_sampling_factor, C/2)
         """
         super(UNetBackbone, self).__init__()
-        assert issubclass(block, nn.Module)
-        assert issubclass(down_sampling, BaseDowmSampling)
-        assert issubclass(up_sampling, BaseUpSampling)
 
         self.input_dims = input_dims
         self.output_dims = output_dims
@@ -41,7 +34,7 @@ class UNetBackbone(nn.Module):
         self.divisible_factor = down_sampling_factor ** down_sampling_times
 
         self.encoders = nn.ModuleList()
-        self.encoders.append(block(input_dims, hidden_dims))
+        self.encoders.append(block(input_dims, hidden_dims, dropout=dropout))
         for i in range(down_sampling_times - 1):
             i += 1
             self.encoders.append(
@@ -54,6 +47,7 @@ class UNetBackbone(nn.Module):
                     block(
                         int(channels_scaleup_factor ** i) * hidden_dims,
                         int(channels_scaleup_factor ** i) * hidden_dims,
+                        dropout=dropout,
                     ),
                 )
             )
@@ -63,9 +57,11 @@ class UNetBackbone(nn.Module):
                 int(channels_scaleup_factor ** (down_sampling_times - 1)) * hidden_dims,
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 down_sampling_factor,
-            ), block(
+            ),
+            block(
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
+                dropout=dropout,
             ),
             up_sampling(
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
@@ -84,6 +80,7 @@ class UNetBackbone(nn.Module):
                         * hidden_dims,
                         int(channels_scaleup_factor ** (down_sampling_times - i))
                         * hidden_dims,
+                        dropout=dropout,
                     ),
                     up_sampling(
                         int(channels_scaleup_factor ** (down_sampling_times - i))
@@ -115,12 +112,3 @@ class UNetBackbone(nn.Module):
         out = out[:, :T, :]
 
         return out
-
-
-if __name__ == "__main__":
-    # pass
-    model = UNetBackbone(1, 2, 64, ResidualBasicBlock, DownSampling, UpSampling)
-    print(model)
-    input_feature = torch.randn(16, 320, 1)
-    output = model(input_feature)
-    print(input_feature.shape, output.shape)

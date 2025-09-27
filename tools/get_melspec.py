@@ -61,11 +61,11 @@ class MelSpecExtractor(torch.nn.Module):
             self,
             n_mels: int,
             sample_rate: int,
-            win_length: int,
-            hop_length: int,
+            window_size: int,
+            hop_size: int,
             n_fft: int,
-            fmin: int,
-            fmax: int,
+            f_min: int,
+            f_max: int,
             clamp: int,
             device: str | torch.cuda.device = None,
     ):
@@ -76,11 +76,11 @@ class MelSpecExtractor(torch.nn.Module):
         self.melspec_transform = MelSpectrogram(
             n_mel_channels=n_mels,
             sampling_rate=sample_rate,
-            win_length=win_length,
-            hop_length=hop_length,
+            win_length=window_size,
+            hop_length=hop_size,
             n_fft=n_fft,
-            mel_fmin=fmin,
-            mel_fmax=fmax,
+            mel_fmin=f_min,
+            mel_fmax=f_max,
             clamp=clamp,
             device=device
         )

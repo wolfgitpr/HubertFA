@@ -51,11 +51,11 @@ hubert_config:
 melspec_config:
   n_mels: 128
   sample_rate: 44100
-  win_length: 1024
-  hop_length: 512
+  window_size: 1024
+  hop_size: 512
   n_fft: 2048
-  fmin: 40
-  fmax: 16000
+  f_min: 40
+  f_max: 16000
   clamp: 0.00001
 
 # 不建议开启

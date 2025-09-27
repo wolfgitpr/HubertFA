@@ -43,7 +43,7 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, langua
     onnx_folder = pathlib.Path(onnx_folder)
     check_configs(onnx_folder)
     with open(onnx_folder / 'VERSION', 'r', encoding='utf-8') as f:
-        assert int(f.readline().strip()) >= 2, f"onnx model version must be greater than 2."
+        assert int(f.readline().strip()) >= 3, f"onnx model version must be greater than 3."
 
     vocab = load_yaml(onnx_folder / "vocab.yaml")
     non_speech_phonemes = [ph.strip() for ph in non_speech_phonemes.split(",") if ph.strip()]
@@ -66,16 +66,13 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, langua
     config = load_yaml(onnx_folder / 'config.yaml')
     vocab = load_yaml(onnx_folder / 'vocab.yaml')
     language_prefix = vocab.get("language_prefix", True)
-
-    hubert_cfg = config['hubert_config']
     mel_cfg = config['melspec_config']
 
     # Create ONNX sessions
-    encoder = create_session(onnx_folder / f"{hubert_cfg['encoder']}-{hubert_cfg['channel']}.onnx")
-    predictor = create_session(onnx_folder / 'model.onnx')
+    model = create_session(onnx_folder / 'model.onnx')
 
     # Process dataset
-    decoder = AlignmentDecoder(vocab, ["None", *non_speech_phonemes], mel_cfg)
+    decoder = AlignmentDecoder(vocab, ["None", *non_speech_phonemes], mel_cfg["sample_rate"], mel_cfg["hop_size"])
     predictions = []
     ignored_phonemes = vocab['silent_phonemes'] + vocab['non_speech_phonemes']
 
@@ -87,10 +84,7 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, langua
         wav, sr = librosa.load(wav_path, sr=mel_cfg['sample_rate'], mono=True)
         wav_length = len(wav) / mel_cfg['sample_rate']
 
-        # Run models
-        feature = run_onnx(encoder, {'waveform': [wav]})["input_feature"]
-        results = run_onnx(predictor, {'input_feature': feature})
-
+        results = run_onnx(model, {'waveform': [wav]})
         words, confidence = decoder.decode(
             results['ph_frame_logits'],
             results['ph_edge_logits'],

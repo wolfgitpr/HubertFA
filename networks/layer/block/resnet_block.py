@@ -2,7 +2,8 @@ import torch.nn as nn
 
 
 class ResidualBasicBlock(nn.Module):
-    def __init__(self, input_dims: int, output_dims: int, hidden_dims: int = None, n_groups: int = 16):
+    def __init__(self, input_dims: int, output_dims: int, hidden_dims: int = None, n_groups: int = 16,
+                 dropout: float = 0.1):
         super(ResidualBasicBlock, self).__init__()
 
         self.input_dims = input_dims
@@ -13,6 +14,7 @@ class ResidualBasicBlock(nn.Module):
             else max(n_groups * (output_dims // n_groups), n_groups)
         )
         self.n_groups = n_groups
+        self.dropout = dropout
 
         self.block = nn.Sequential(
             nn.Conv1d(
@@ -24,6 +26,7 @@ class ResidualBasicBlock(nn.Module):
             ),
             nn.GroupNorm(self.n_groups, self.hidden_dims),
             nn.Hardswish(),
+            nn.Dropout1d(dropout) if dropout > 0 else nn.Identity(),
             nn.Conv1d(
                 self.hidden_dims,
                 self.output_dims,
@@ -42,6 +45,7 @@ class ResidualBasicBlock(nn.Module):
         self.out = nn.Sequential(
             nn.LayerNorm(self.output_dims),
             nn.Hardswish(),
+            nn.Dropout(dropout) if dropout > 0 else nn.Identity(),
         )
 
     def forward(self, x):
