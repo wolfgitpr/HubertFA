@@ -246,22 +246,22 @@ def collate_fn(batch):
                 torch.as_tensor(item[13]), (0, max_len - item[13].shape[-1], 0, 0, 0, 0), mode='constant', value=0
             ),  # input_feature
         ))
-
+    repeat_num = len(padded_batch[0][0])
     return (
         torch.cat([x[0] for x in padded_batch], dim=0),  # input_features (B, C, T)
-        input_feature_lengths,
+        input_feature_lengths.repeat(repeat_num),
         [x[1] for x in padded_batch],  # ph_seqs
-        torch.stack([x[2] for x in padded_batch]),  # ph_id_seqs (B, S_ph)
-        ph_seq_lengths,
-        torch.stack([x[3] for x in padded_batch]),  # ph_edges (B, T)
-        torch.stack([x[4] for x in padded_batch]),  # ph_frames (B, T)
-        torch.stack([x[5] for x in padded_batch]),  # (B, ...)
+        torch.stack([x[2] for x in padded_batch]).repeat(repeat_num, 1),  # ph_id_seqs (B, S_ph)
+        ph_seq_lengths.repeat(repeat_num),
+        torch.stack([x[3] for x in padded_batch]).repeat(repeat_num, 1),  # ph_edges (B, T)
+        torch.stack([x[4] for x in padded_batch]).repeat(repeat_num, 1),  # ph_frames (B, T)
+        torch.stack([x[5] for x in padded_batch]).repeat(repeat_num, 1),  # ph_mask (B, ...)
         torch.cat([x[6] for x in padded_batch], dim=0),  # mel_specs (B, C_mel, T)
-        torch.stack([x[7] for x in padded_batch]),  # ph_times (B, S_ph)
+        torch.stack([x[7] for x in padded_batch]).repeat(repeat_num, 1),  # ph_times (B, S_ph)
         [x[8] for x in padded_batch],  # names
         [x[9] for x in padded_batch],  # ph_seq_raws,
         [x[10] for x in padded_batch],  # ph_time_raws
-        torch.cat([x[11] for x in padded_batch], dim=0),  # non_speech_target (B, N, T)
+        torch.cat([x[11] for x in padded_batch], dim=0).repeat(repeat_num, 1, 1),  # non_speech_target (B, N, T)
         [x[12] for x in padded_batch],  # non_speech_intervals (B, N, T)
-        torch.cat([x[13] for x in padded_batch], dim=0)  # curves
+        torch.cat([x[13] for x in padded_batch], dim=0).repeat(repeat_num, 1, 1)  # curves
     )

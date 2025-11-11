@@ -10,14 +10,18 @@ datasets_config: # 数据集
   - configs/datasets_config.yaml
 
 binary_folder: data/binary_units # 预处理结果文件夹
-
-multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
-multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
-multiprocess_start_size: 100  # 最小启动数据量
-
-units_cache: true # tools/pretreatment_hubert.py 使用hubert预处理units，保存为wav同名npy文件。避免对照实验时反复预处理。
 valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
-max_length: 45 # 单条音频最大时长
+max_length: 20 # 单条音频最大时长
+
+augmentation_args:
+  random_pitch_shifting:
+    enabled: true
+    range: [-5., 5.]
+    num: 1
+  blank_padding:
+    enabled: true
+    range: [0, 2] # seconds
+    num: 1
 
 # 暂未启用
 extra_phonemes: [ ]
@@ -39,7 +43,11 @@ silent_phonemes:
   - EP
   - GS
 
-# 参照readme表格配置
+units_cache: false # tools/pretreatment_hubert.py 使用hubert预处理units，保存为wav同名npy文件。避免对照实验时反复预处理。
+multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
+multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
+multiprocess_start_size: 100  # 最小启动数据量
+
 hubert_config:
   encoder: cnhubert
   model_path: dependencies/chinese-hubert-base

@@ -62,6 +62,9 @@ class ForcedAlignmentBinarizer:
         self.frame_length = self.hop_size / self.sample_rate
 
         self.hubert_channel = binary_config['hubert_config']["channel"]
+        aug_args = binary_config['augmentation_args']
+        self.aug_num = 1 + (aug_args['random_pitch_shifting']['num'] if aug_args['random_pitch_shifting'][
+            'enabled'] else 0) + (aug_args['blank_padding']['num'] if aug_args['blank_padding']['enabled'] else 0)
 
     def get_vocab(self):
         print("Generating vocab...")
@@ -372,7 +375,8 @@ class ForcedAlignmentBinarizer:
                 npy_loaded = True if units.shape[1] > 0 else False
             if not npy_loaded:
                 units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
-                                             self.hop_size)  # [B, T, C]
+                                             self.hop_size,
+                                             aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
             B, T, C = units.shape
@@ -381,19 +385,19 @@ class ForcedAlignmentBinarizer:
 
             return {
                 'name': str(_item["name"]),
-                'input_feature': units.cpu().numpy().astype("float32"),
-                'curves': curves.cpu().numpy().astype("float32"),
-                'melspec': melspec.cpu().numpy().astype("float32") if export_mel else np.array([0]),
-                'ph_id_seq': ph_id_seq.astype("int32"),
-                'ph_edge': ph_edge.astype("float32"),
-                'ph_frame': ph_frame.astype("int32"),
-                'ph_mask': ph_mask.astype("int32"),
-                'ph_time': ph_time.astype("float32"),
+                'input_feature': units.cpu().numpy().astype("float32"),  # (B,T,C)
+                'curves': curves.cpu().numpy().astype("float32"),  # (B,1,C)
+                'melspec': melspec.cpu().numpy().astype("float32") if export_mel else np.array([0]),  # (1,C,T)
+                'ph_id_seq': ph_id_seq.astype("int32"),  # (N,)
+                'ph_edge': ph_edge.astype("float32"),  # (T,)
+                'ph_frame': ph_frame.astype("int32"),  # (T,)
+                'ph_mask': ph_mask.astype("int32"),  # (X,)
+                'ph_time': ph_time.astype("float32"),  # (N,)
                 'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
                 'ph_seq_raw': _item.ph_seq,
                 'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0],
-                "non_speech_target": non_speech_target.astype("int32"),
-                "non_speech_intervals": non_speech_intervals.astype("int32"),
+                "non_speech_target": np.tile(non_speech_target, (self.aug_num, 1, 1)).astype("int32"),  # (B,N,T)
+                "non_speech_intervals": np.tile(non_speech_intervals, (self.aug_num, 1, 1)).astype("int32"),  # (B,N,2)
                 "wav_length": wav_length
             }
 
@@ -480,7 +484,10 @@ def binarize(config: str):
 
     config["datasets"] = datasets
 
+    aug_args = config["augmentation_args"]
     global_config = {
+        "units_nums": 1 + (aug_args['random_pitch_shifting']['num'] if aug_args['random_pitch_shifting'][
+            'enabled'] else 0) + (aug_args['blank_padding']['num'] if aug_args['blank_padding']['enabled'] else 0),
         "max_length": config["max_length"],
         "melspec_config": config["melspec_config"],
         "hubert_config": config["hubert_config"],
