@@ -92,6 +92,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             "ph_edge_diff_loss",
             "ctc_GHM_loss",
             "cvnt_loss",
+            "consistency_loss",
             "total_loss",
         ]
         self.losses_weights = torch.tensor(loss_config["losses"]["weights"])
@@ -126,6 +127,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             loss_config["function"]["alpha"],
             label_smoothing=0.0,
         )
+
+        self.MSE_loss_fn = nn.MSELoss()
         self.CTC_GHM_loss_fn = CTCGHMLoss(alpha=1 - 1e-3)
 
         self.unitsEncoder = None
@@ -256,6 +259,46 @@ class LitForcedAlignmentTask(pl.LightningModule):
         dice_loss = self.dice_loss(cvnt_logits, target_indices)
         return 0.5 * ce_loss + 0.3 * focal_loss + 0.2 * dice_loss
 
+    def _get_consistency_loss(
+            self, ph_frame_logits, ph_edge_logits, input_feature_lengths
+    ):
+        original_frame_logits = ph_frame_logits[0:1]  # (1, T, vocab_size)
+        original_edge_logits = ph_edge_logits[0:1]  # (1, T)
+
+        augmented_frame_logits = ph_frame_logits[1:]  # (B-1, T, vocab_size)
+        augmented_edge_logits = ph_edge_logits[1:]  # (B-1, T)
+
+        B_aug = augmented_frame_logits.shape[0]
+        T = augmented_frame_logits.shape[1]
+
+        if B_aug == 0:
+            return torch.tensor(0.0, device=self.device)
+
+        original_frame_expanded = original_frame_logits.repeat(B_aug, 1, 1)  # (B-1, T, vocab_size)
+        original_edge_expanded = original_edge_logits.repeat(B_aug, 1)  # (B-1, T)
+
+        mask = torch.arange(T, device=self.device)  # (T,)
+        mask = mask.unsqueeze(0).repeat(B_aug, 1)  # (B_aug, T)
+        mask = (
+            (mask < input_feature_lengths[1:].unsqueeze(1))
+            .to(torch.bool)
+            .unsqueeze(-1)
+        )
+
+        frame_consistency_loss = self.MSE_loss_fn(
+            augmented_frame_logits * mask,
+            original_frame_expanded * mask
+        )
+
+        edge_mask = mask.squeeze(-1)
+        edge_consistency_loss = self.MSE_loss_fn(
+            augmented_edge_logits * edge_mask,
+            original_edge_expanded * edge_mask
+        )
+
+        consistency_loss = frame_consistency_loss + edge_consistency_loss
+        return consistency_loss
+
     def _get_loss(
             self,
             ph_frame_logits,  # (B, T, vocab_size)
@@ -317,12 +360,17 @@ class LitForcedAlignmentTask(pl.LightningModule):
             valid
         )
 
+        consistency_loss = self._get_consistency_loss(
+            ph_frame_logits, ph_edge_logits, input_feature_lengths
+        )
+
         losses = [
             ph_frame_GHM_loss,
             ph_edge_GHM_loss,
             ph_edge_diff_loss,
             ctc_GHM_loss,
-            cvnt_loss
+            cvnt_loss,
+            consistency_loss
         ]
 
         return losses

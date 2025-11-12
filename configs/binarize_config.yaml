@@ -15,12 +15,12 @@ max_length: 20 # 单条音频最大时长
 
 augmentation_args:
   random_pitch_shifting:
-    enabled: true
-    range: [-5., 5.]
+    enabled: false
+    range: [ -5., 5. ]
     num: 1
   blank_padding:
-    enabled: true
-    range: [0, 2] # seconds
+    enabled: false
+    range: [ 0, 5 ] # seconds
     num: 1
 
 # 暂未启用

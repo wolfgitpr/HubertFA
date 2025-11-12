@@ -1,4 +1,4 @@
-model_name: 0918_hfa_power
+model_name: 1111_data_aug
 
 # settings
 float32_matmul_precision: high
@@ -15,7 +15,7 @@ drop_last: False
 
 num_valid_plots: 20 # val、evaluate各项最大绘制数量
 # 绘制evaluate/计算loss，暂未评估加入loss的效果，开启后val极慢
-draw_evaluate: False
+draw_evaluate: True
 get_evaluate_loss: False
 
 # model，建议不修改，或对照实验
@@ -48,8 +48,8 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 8.0, 0.1, 1.0, 6.0, 10.0 ]
-    enable_RampUpScheduler: [ False,False,False,True,False ]
+    weights: [ 8.0, 0.1, 1.0, 6.0, 10.0, 5.0 ]
+    enable_RampUpScheduler: [ False,False,False,True,False,False ]
   function:
     num_bins: 10
     alpha: 0.999
