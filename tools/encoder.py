@@ -34,7 +34,8 @@ class UnitsEncoder(torch.nn.Module):
                 audio,  # B, T
                 sample_rate,
                 hop_size,
-                aug_args
+                aug=False,
+                aug_args=None,
                 ):
         # resample
         if sample_rate == self.encoder_sample_rate:
@@ -50,7 +51,7 @@ class UnitsEncoder(torch.nn.Module):
         if audio_resample.size(-1) < 400:
             audio_resample = torch.nn.functional.pad(audio, (0, 400 - audio_resample.size(-1)))  # [B, T]
 
-        if aug_args['random_pitch_shifting']['enabled']:
+        if aug and aug_args['random_pitch_shifting']['enabled']:
             key_shift_min, key_shift_max = aug_args['random_pitch_shifting']['range']
             audio_versions = [audio_resample]
             for _ in range(aug_args['random_pitch_shifting']['num']):
@@ -65,7 +66,7 @@ class UnitsEncoder(torch.nn.Module):
 
         units = self.model(audio_resample)  # [B, T, C]
 
-        if aug_args['blank_padding']['enabled']:
+        if aug and aug_args['blank_padding']['enabled']:
             padding_min, padding_max = aug_args['blank_padding']['range']
             audio_length = len(audio_resample[0])
             audio_padding = torch.zeros(

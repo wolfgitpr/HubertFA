@@ -375,7 +375,7 @@ class ForcedAlignmentBinarizer:
                 npy_loaded = True if units.shape[1] > 0 else False
             if not npy_loaded:
                 units = unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
-                                             self.hop_size,
+                                             self.hop_size, aug=True,
                                              aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
             melspec = get_melspec(waveform) if export_mel else None  # [B, C, T]
 
@@ -396,8 +396,8 @@ class ForcedAlignmentBinarizer:
                 'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
                 'ph_seq_raw': _item.ph_seq,
                 'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0],
-                "non_speech_target": np.tile(non_speech_target, (self.aug_num, 1, 1)).astype("int32"),  # (B,N,T)
-                "non_speech_intervals": np.tile(non_speech_intervals, (self.aug_num, 1, 1)).astype("int32"),  # (B,N,2)
+                "non_speech_target": non_speech_target.astype("int32"),  # (B,N,T)
+                "non_speech_intervals": non_speech_intervals.astype("int32"),  # (B,N,2)
                 "wav_length": wav_length
             }
 

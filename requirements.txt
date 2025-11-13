@@ -6,7 +6,7 @@ lightning>=2.0.0
 matplotlib
 numpy~=1.26.4
 PyYAML
-transformers
+transformers~=4.45.0
 tensorboard
 tqdm
 textgrid

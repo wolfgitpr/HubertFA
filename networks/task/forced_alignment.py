@@ -173,10 +173,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
     def make_non_speech_mask(self, shape, non_speech_intervals):
         B, T, C = shape
         non_speech_mask = torch.zeros((B, T, 1), dtype=torch.bool, device=self.device)
+
         if self.non_speech_mask_ratio > 0:
-            mask_idxs = random.choices(range(B), k=int(B * self.non_speech_mask_ratio))
-            for mask_idx in mask_idxs:
-                non_speech_interval = non_speech_intervals[mask_idx]
+            non_speech_interval = non_speech_intervals[0]
+            if len(non_speech_interval) > 0:
                 non_speech_idx = random.choices(range(len(non_speech_interval)),
                                                 k=int(len(non_speech_interval) * self.non_speech_mask_ratio))
                 for idx in non_speech_idx:
@@ -184,10 +184,11 @@ class LitForcedAlignmentTask(pl.LightningModule):
                     end_frame = non_speech_interval[idx][1]
                     ph_len = end_frame - start_frame
 
-                    mask_len = int(self.non_speech_mask_ratio * ph_len) + 1
-                    offset = random.randint(0, ph_len - mask_len)
-                    non_speech_mask[mask_idx, :, start_frame + offset:start_frame + offset + mask_len] = 1
-        return non_speech_mask.bool()
+                    if ph_len > 0:
+                        mask_len = max(1, int(self.non_speech_mask_ratio * ph_len))
+                        offset = random.randint(0, max(0, ph_len - mask_len))
+                        non_speech_mask[:, start_frame + offset:start_frame + offset + mask_len, :] = True
+        return non_speech_mask
 
     def predict_step(self, batch, batch_idx):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_speech_phonemes = batch
@@ -260,13 +261,15 @@ class LitForcedAlignmentTask(pl.LightningModule):
         return 0.5 * ce_loss + 0.3 * focal_loss + 0.2 * dice_loss
 
     def _get_consistency_loss(
-            self, ph_frame_logits, ph_edge_logits, input_feature_lengths
+            self, ph_frame_logits, ph_edge_logits, cvnt_logits, input_feature_lengths
     ):
         original_frame_logits = ph_frame_logits[0:1]  # (1, T, vocab_size)
         original_edge_logits = ph_edge_logits[0:1]  # (1, T)
+        original_cvnt_logits = cvnt_logits[0:1]  # (1, N, T)
 
         augmented_frame_logits = ph_frame_logits[1:]  # (B-1, T, vocab_size)
         augmented_edge_logits = ph_edge_logits[1:]  # (B-1, T)
+        augmented_cvnt_logits = cvnt_logits[1:]  # (B-1, N, T)
 
         B_aug = augmented_frame_logits.shape[0]
         T = augmented_frame_logits.shape[1]
@@ -276,27 +279,34 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         original_frame_expanded = original_frame_logits.repeat(B_aug, 1, 1)  # (B-1, T, vocab_size)
         original_edge_expanded = original_edge_logits.repeat(B_aug, 1)  # (B-1, T)
+        original_cvnt_expanded = original_cvnt_logits.repeat(B_aug, 1, 1)  # (B-1, N, T)
 
         mask = torch.arange(T, device=self.device)  # (T,)
         mask = mask.unsqueeze(0).repeat(B_aug, 1)  # (B_aug, T)
-        mask = (
+        time_mask = (
             (mask < input_feature_lengths[1:].unsqueeze(1))
             .to(torch.bool)
             .unsqueeze(-1)
         )
+        edge_mask = time_mask.squeeze(-1)
+        cvnt_mask = time_mask.permute(0, 2, 1)  # (B_aug, 1, T) for cvnt_logits
 
         frame_consistency_loss = self.MSE_loss_fn(
-            augmented_frame_logits * mask,
-            original_frame_expanded * mask
+            augmented_frame_logits * time_mask,
+            original_frame_expanded * time_mask
         )
 
-        edge_mask = mask.squeeze(-1)
         edge_consistency_loss = self.MSE_loss_fn(
             augmented_edge_logits * edge_mask,
             original_edge_expanded * edge_mask
         )
 
-        consistency_loss = frame_consistency_loss + edge_consistency_loss
+        cvnt_consistency_loss = self.MSE_loss_fn(
+            augmented_cvnt_logits * cvnt_mask,
+            original_cvnt_expanded * cvnt_mask
+        )
+
+        consistency_loss = frame_consistency_loss + edge_consistency_loss + cvnt_consistency_loss
         return consistency_loss
 
     def _get_loss(
@@ -361,7 +371,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         )
 
         consistency_loss = self._get_consistency_loss(
-            ph_frame_logits, ph_edge_logits, input_feature_lengths
+            ph_frame_logits, ph_edge_logits, cvnt_logits, input_feature_lengths
         )
 
         losses = [
