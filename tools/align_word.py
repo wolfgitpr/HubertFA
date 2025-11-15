@@ -36,12 +36,18 @@ class Word:
         return self.end - self.start
 
     def add_phoneme(self, phoneme):
+        if phoneme.start == phoneme.end:
+            warnings.warn(f"{phoneme.text} phoneme长度为0，非法")
+            return
         if phoneme.start >= self.start and phoneme.end <= self.end:
             self.phonemes.append(phoneme)
         else:
             warnings.warn(f"{phoneme.text}: phoneme边界超出word，添加失败")
 
     def append_phoneme(self, phoneme):
+        if phoneme.start == phoneme.end:
+            warnings.warn(f"{phoneme.text} phoneme长度为0，非法")
+            return
         if len(self.phonemes) == 0:
             if phoneme.start == self.start:
                 self.phonemes.append(phoneme)
