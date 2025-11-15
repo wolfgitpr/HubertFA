@@ -204,7 +204,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
                 cvnt_logits,  # [ B, N, T]
             ) = self.forward(input_feature, curves)
 
-        words, confidence = self.decoder.decode(
+        words, _ = self.decoder.decode(
             ph_frame_logits.float().cpu().numpy(),
             ph_edge_logits.float().cpu().numpy(),
             cvnt_logits.float().cpu().numpy(),
@@ -213,7 +213,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         )
 
         words.clear_language_prefix()
-        return wav_path, wav_length, words, confidence
+        return wav_path, wav_length, words
 
     def cross_entropy_and_focal_loss(self, logits, targets):
         log_probs = F.log_softmax(logits, dim=1)

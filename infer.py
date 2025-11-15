@@ -19,11 +19,13 @@ from train import LitForcedAlignmentTask
 @click.option("--folder", "-f", default="segments", type=str, help="path to the input folder")
 @click.option("--g2p", "-g", default="Dictionary", type=str, help="name of the g2p class")
 @click.option("--non_speech_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
-@click.option("--save_confidence", "-sc", is_flag=True, default=False, show_default=True, help="save confidence.csv")
 @click.option("--language", "-l", default="zh", type=str, help="language of dictionary.(exp. zh ja en yue)")
 @click.option("--dictionary", "-d", default=None, type=str,
               help="(only used when --g2p=='Dictionary') path to the dictionary")
-def main(ckpt, encoder, folder, g2p, non_speech_phonemes, save_confidence, language, dictionary):
+@click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
+@click.option("--pad_length", "-pl", type=int, default=5,
+              help="The max length of blank audio on the pad before inference")
+def main(ckpt, encoder, folder, g2p, non_speech_phonemes, language, dictionary):
     model_dir = pathlib.Path(ckpt).parent
     check_configs(model_dir)
 
@@ -56,7 +58,8 @@ def main(ckpt, encoder, folder, g2p, non_speech_phonemes, save_confidence, langu
     if log:
         print("error:", "\n".join(log))
 
-    Exporter(predictions).export(['textgrid', 'confidence'] if save_confidence else ['textgrid'])
+    Exporter(predictions).export(
+        ['textgrid'])
     print("Output files are saved to the same folder as the input wav files.")
 
 
