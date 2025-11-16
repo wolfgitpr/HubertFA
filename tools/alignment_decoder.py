@@ -102,6 +102,7 @@ class AlignmentDecoder:
         ph_time_pred = self.frame_length * (
             np.concatenate([self.ph_time_int_pred.astype("float32") + ph_time_fractional, [T]])
         )
+        ph_time_pred = np.clip(ph_time_pred, 0, None)
         ph_intervals = np.stack([ph_time_pred[:-1], ph_time_pred[1:]], axis=1)
 
         word = None

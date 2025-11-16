@@ -8,6 +8,10 @@ class Phoneme:
     end: float
     text: str
 
+    def __post_init__(self):
+        if not (0 <= self.start < self.end):
+            warnings.warn(f"Phoneme Invalid: text={self.text} start={self.start}, end={self.end}")
+
 
 @dataclass
 class Word:
@@ -17,6 +21,9 @@ class Word:
     phonemes: list[Phoneme] = field(default_factory=list)
 
     def __init__(self, start: float, end: float, text: str, init_phoneme: bool = False):
+        if not (0 <= start < end):
+            warnings.warn(f"Word Invalid: text={text} start={start}, end={end}")
+
         self.start = start
         self.end = end
         self.text = text
@@ -29,38 +36,44 @@ class Word:
         return self.end - self.start
 
     def add_phoneme(self, phoneme):
+        if phoneme.start == phoneme.end:
+            warnings.warn(f"{phoneme.text} phoneme长度为0，非法")
+            return
         if phoneme.start >= self.start and phoneme.end <= self.end:
             self.phonemes.append(phoneme)
         else:
-            warnings.warn("phoneme边界超出word，添加失败")
+            warnings.warn(f"{phoneme.text}: phoneme边界超出word，添加失败")
 
     def append_phoneme(self, phoneme):
+        if phoneme.start == phoneme.end:
+            warnings.warn(f"{phoneme.text} phoneme长度为0，非法")
+            return
         if len(self.phonemes) == 0:
             if phoneme.start == self.start:
                 self.phonemes.append(phoneme)
                 self.end = phoneme.end
             else:
-                warnings.warn("phoneme左边界超出word，添加失败")
+                warnings.warn(f"{phoneme.text}: phoneme左边界超出word，添加失败")
         else:
             if phoneme.start == self.phonemes[-1].end:
                 self.phonemes.append(phoneme)
                 self.end = phoneme.end
             else:
-                warnings.warn("phoneme添加失败")
+                warnings.warn(f"{phoneme.text}: phoneme添加失败")
 
     def move_start(self, new_start):
         if 0 <= new_start < self.phonemes[0].end:
             self.start = new_start
             self.phonemes[0].start = new_start
         else:
-            warnings.warn("start >= first_phone_end，无法调整word边界")
+            warnings.warn(f"{self.text}: start >= first_phone_end，无法调整word边界")
 
     def move_end(self, new_end):
         if new_end > self.phonemes[-1].start >= 0:
             self.end = new_end
             self.phonemes[-1].end = new_end
         else:
-            warnings.warn("new_end <= first_phone_start，无法调整word边界")
+            warnings.warn(f"{self.text}: new_end <= first_phone_start，无法调整word边界")
 
 
 class WordList(list):
@@ -74,11 +87,8 @@ class WordList(list):
         return overlapping_words
 
     def append(self, word: Word):
-        if not isinstance(word, Word):
-            raise TypeError("只能添加Word对象")
-
         if len(word.phonemes) == 0:
-            warnings.warn("phones为空，非法word")
+            warnings.warn(f"{word}: phones为空，非法word")
             return
 
         if len(self) == 0:
@@ -88,14 +98,11 @@ class WordList(list):
         if not self.overlapping_words(word):
             super().append(word)
         else:
-            warnings.warn("区间重叠，无法添加word")
+            warnings.warn(f"{word}: 区间重叠，无法添加word")
 
     def add_AP(self, ap: Word, min_dur=0.1):
-        if not isinstance(ap, Word):
-            raise TypeError("只能添加Word对象")
-
         if len(ap.phonemes) == 0:
-            warnings.warn("phones为空，非法word")
+            warnings.warn(f"AP phonemes为空，非法word")
             return
 
         if len(self) == 0:

@@ -6,7 +6,8 @@
 
 专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。
 
-基于[SOFA](https://github.com/qiuqiao/SOFA)和[FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler)优化，支持对齐音素及自动识别非发声音素（如呼吸）。
+基于[SOFA](https://github.com/qiuqiao/SOFA)和[FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler)
+优化，支持对齐音素及自动识别非发声音素（如呼吸）。
 
 [模型分享说明](https://github.com/wolfgitpr/HubertFA/discussions/2)
 
@@ -68,7 +69,8 @@
     - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
     - `--language`：指定语种，zh ja en yue（默认为`zh`）；
     - `--non_speech_phonemes`：自动推理非发声音素（默认为`AP`，可选`AP,EP`）
-    - `--save_confidence`：（可选）输出置信度；
+    - `--pad_times`：音频前加入空白进行推理，次数；
+    - `--pad_length`：空白最长的长度；
     - `--dictionary`：（可选）字典文件；
 
    ckpt推理（开发者）
@@ -83,7 +85,8 @@
     - `--language`：指定语种，zh ja en yue（默认为`zh`）；
     - `--non_speech_phonemes`：自动推理非发声音素（默认为`AP`，可选`AP,EP`）
     - `--encoder`：（可选）音频编码器的路径，如Chinese hubert的文件夹
-    - `--save_confidence`：（可选）输出置信度；
+    - `--pad_times`：音频前加入空白进行推理，次数；
+    - `--pad_length`：空白最长的长度；
     - `--dictionary`：（可选）字典文件；
 
 5. 获取最终标注
