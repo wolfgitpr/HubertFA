@@ -8,6 +8,7 @@ local_tools/
 infer_out/
 *.onnx
 /data/*
+data/*
 !/data/.gitkeep
 /checkpoints/*
 !/checkpoints/.gitkeep

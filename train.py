@@ -7,37 +7,17 @@ import lightning as pl
 import torch
 from torch.utils.data import DataLoader
 
-from networks.task.forced_alignment import LitForcedAlignmentTask
+from networks.task.forced_alignment_task import LitForcedAlignmentTask
 from tools.config_utils import load_yaml
 from tools.dataset import MixedDataset, BinningAudioBatchSampler, collate_fn
 from tools.train_callbacks import StepProgressBar, RecentCheckpointsCallback, MonitorCheckpointsCallback
 
 
 @click.command()
-@click.option(
-    "--config",
-    "-c",
-    type=str,
-    default="configs/train_config.yaml",
-    show_default=True,
-    help="training config path",
-)
-@click.option(
-    "--pretrained_model_path",
-    "-p",
-    type=str,
-    default=None,
-    show_default=True,
-    help="pretrained model path. if None, training from scratch",
-)
-@click.option(
-    "--resume",
-    "-r",
-    is_flag=True,
-    default=False,
-    show_default=True,
-    help="resume training from checkpoint",
-)
+@click.option("--config", "-c", type=str, default="configs/train_config.yaml", show_default=True,
+              help="training config path")
+@click.option("--resume", "-r", is_flag=True, default=False, show_default=True,
+              help="resume training from checkpoint")
 def main(config: str, pretrained_model_path, resume):
     os.environ[
         "TORCH_CUDNN_V8_API_ENABLED"
@@ -105,15 +85,7 @@ def main(config: str, pretrained_model_path, resume):
     )
 
     # model
-    lightning_alignment_model = LitForcedAlignmentTask(
-        vocab,
-        config["model"],
-        config["hubert_config"],
-        config["melspec_config"],
-        config["optimizer_config"],
-        config["loss_config"],
-        config
-    )
+    lightning_alignment_model = LitForcedAlignmentTask(vocab, config)
 
     recent_checkpoints_callback = RecentCheckpointsCallback(
         dirpath=save_model_folder,
@@ -146,11 +118,7 @@ def main(config: str, pretrained_model_path, resume):
     )
 
     ckpt_path = None
-    if pretrained_model_path is not None:
-        # use pretrained model TODO: load pretrained model
-        pretrained = LitForcedAlignmentTask.load_from_checkpoint(pretrained_model_path)
-        lightning_alignment_model.load_pretrained(pretrained)
-    elif resume:
+    if resume:
         # resume training state
         ckpt_path_list = save_model_folder.glob("*.ckpt")
         ckpt_path_list = sorted(

@@ -10,7 +10,7 @@ import torchaudio
 import yaml
 from transformers import HubertModel
 
-from networks.task.forced_alignment import LitForcedAlignmentTask
+from networks.task.forced_alignment_task import LitForcedAlignmentTask
 from tools.binarize_util import PowerCurveComputer
 from tools.config_utils import load_yaml
 

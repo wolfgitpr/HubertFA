@@ -4,15 +4,16 @@ from matplotlib import pyplot as plt
 plt.rcParams['font.sans-serif'] = ['SimSun']
 
 
-def plot_prob_to_image(melspec,
-                       ph_seq,
-                       ph_intervals,
-                       frame_confidence,
-                       cvnt_prob,
-                       ph_time_gt=None,
-                       label=None, v_min=-8, v_max=2, title=None,
-                       bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
-    label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
+def plot_force_alignment_prob(melspec,
+                              ph_seq,
+                              ph_intervals,
+                              frame_confidence,
+                              edge_prob,
+                              ph_frame_prob,
+                              ph_frame_id_gt,
+                              ph_time_gt=None,
+                              v_min=-8, v_max=2, title=None
+                              ):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
 
     if title:
@@ -80,6 +81,42 @@ def plot_prob_to_image(melspec,
         framealpha=0.9,
         ncol=1
     )
+
+    ax1.set_xlabel('Frame Index')
+    ax1.set_ylabel('Mel Bin')
+
+    ax2.imshow(
+        ph_frame_prob.T,
+        origin="lower",
+        aspect="auto",
+        interpolation="nearest"
+    )
+
+    ax2.set_xlabel('Frame Index')
+    ax2.set_ylabel('Probability')
+
+    ax2.plot(x, ph_frame_id_gt, color="red", linewidth=1.5)
+    ax2.plot(x, edge_prob * ph_frame_prob.shape[-1], color="black", linewidth=1)
+    ax2.fill_between(x, edge_prob * ph_frame_prob.shape[-1], color="black", alpha=0.3)
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.2)
+    return fig
+
+
+def plot_non_lexical_phonemes(melspec, cvnt_prob,
+                              label=None, v_min=-8, v_max=2, title=None,
+                              bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
+    label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
+
+    if title:
+        fig.suptitle(title, fontsize=14)
+
+    T = melspec.shape[-1]
+    x = np.arange(T)
+
+    ax1.pcolormesh(x, np.arange(melspec.shape[0]), melspec, shading='auto', vmin=v_min, vmax=v_max)
 
     melspec = melspec.T
     n_frames = melspec.shape[0]

@@ -3,15 +3,17 @@ import pathlib
 
 import click
 import librosa
+import numpy as np
 import onnxruntime as ort
 import yaml
 from tqdm import tqdm
 
 import networks.g2p
+from tools.align_word import WordList, Word, Phoneme
 from tools.alignment_decoder import AlignmentDecoder
 from tools.config_utils import check_configs
 from tools.export_tool import Exporter
-from tools.post_processing import post_processing
+from tools.post_processing import post_processing, find_all_duplicate_phonemes, remove_outliers_per_position
 
 
 def load_yaml(file_path):
@@ -36,10 +38,12 @@ def create_session(onnx_path):
 @click.option("--folder", "-f", default="segments", type=str, help="Input folder path")
 @click.option("--g2p", "-g", default="Dictionary", type=str, help="G2P class name")
 @click.option("--non_speech_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
-@click.option("--save_confidence", "-sc", is_flag=True, help="Save confidence.csv")
 @click.option("--language", "-l", default="zh", help="Dictionary language")
 @click.option("--dictionary", "-d", type=pathlib.Path, help="Custom dictionary path")
-def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, language, dictionary):
+@click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
+@click.option("--pad_length", "-pl", type=int, default=5,
+              help="The max length of blank audio on the pad before inference")
+def infer(onnx_folder, folder, g2p, non_speech_phonemes, language, dictionary, pad_times, pad_length):
     onnx_folder = pathlib.Path(onnx_folder)
     check_configs(onnx_folder)
     with open(onnx_folder / 'VERSION', 'r', encoding='utf-8') as f:
@@ -76,6 +80,8 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, langua
     predictions = []
     ignored_phonemes = vocab['silent_phonemes'] + vocab['non_speech_phonemes']
 
+    pad_lengths = [round(pad_length / pad_times * i, 1) for i in range(0, pad_times)] if pad_times > 1 else [0]
+
     for i in tqdm(range(len(dataset)), desc="Processing", unit="it"):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_speech_phonemes = dataset[i]
         ph_seq = [f"{language}/{ph}" if ph not in ignored_phonemes and language_prefix else ph for ph in ph_seq]
@@ -84,23 +90,49 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, save_confidence, langua
         wav, sr = librosa.load(wav_path, sr=mel_cfg['sample_rate'], mono=True)
         wav_length = len(wav) / mel_cfg['sample_rate']
 
-        results = run_onnx(model, {'waveform': [wav]})
-        words, confidence = decoder.decode(
-            results['ph_frame_logits'],
-            results['ph_edge_logits'],
-            results['cvnt_logits'],
-            wav_length, ph_seq, word_seq, ph_idx_to_word_idx,
-            non_speech_phonemes=non_speech_phonemes
-        )
+        words_list: list[WordList] = []
+        for pl in pad_lengths:
+            padded_samples = int(pl * mel_cfg['sample_rate'])
+            padded_frames = int(padded_samples / mel_cfg['hop_size'])
+            padded_wav = np.pad(wav, (padded_samples, 0), mode='constant', constant_values=0)
 
-        words.clear_language_prefix()
-        predictions.append((wav_path, wav_length, words, confidence))
+            results = run_onnx(model, {'waveform': [padded_wav]})
+            words, _ = decoder.decode(
+                results['ph_frame_logits'][:, padded_frames + 1:, :],
+                results['ph_edge_logits'][:, padded_frames + 1:],
+                results['cvnt_logits'][:, :, padded_frames + 1:],
+                wav_length, ph_seq, word_seq, ph_idx_to_word_idx,
+                non_speech_phonemes=non_speech_phonemes
+            )
+            words.clear_language_prefix()
+            words_list.append(words)
+
+        ph_list = [words.phonemes for words in words_list]
+        words_list = [words_list[i] for i in find_all_duplicate_phonemes(ph_list)]
+
+        phonemes_all = []
+        result_word = WordList()
+        for w_idx in range(len(words_list[0])):
+            phonemes = []
+            for ph_idx in range(len(words_list[0][w_idx].phonemes)):
+                ph_start = \
+                    remove_outliers_per_position([[words[w_idx].phonemes[ph_idx].start for words in words_list]])[0]
+                ph_end = remove_outliers_per_position([[words[w_idx].phonemes[ph_idx].end for words in words_list]])[0]
+                ph_start = max(ph_start, phonemes_all[-1].end if len(phonemes_all) > 0 else 0)
+                ph_end = max(ph_start + 0.0001, ph_end)
+                phonemes.append(Phoneme(ph_start, ph_end, words_list[0][w_idx].phonemes[ph_idx].text))
+                phonemes_all.append(Phoneme(ph_start, ph_end, words_list[0][w_idx].phonemes[ph_idx].text))
+            word = Word(phonemes[0].start, phonemes[-1].end, words_list[0][w_idx].text)
+            for ph in phonemes:
+                word.append_phoneme(ph)
+            result_word.append(word)
+        predictions.append((wav_path, wav_length, result_word))
 
     predictions, log = post_processing(predictions)
     if log:
         print("error:", "\n".join(log))
 
-    Exporter(predictions).export(['textgrid', 'confidence'] if save_confidence else ['textgrid'])
+    Exporter(predictions).export(['textgrid'])
     print("Output files are saved to the same folder as the input wav files.")
 
 

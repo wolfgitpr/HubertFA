@@ -463,17 +463,13 @@ class ForcedAlignmentBinarizer:
 
 
 @click.command()
-@click.option(
-    "--config",
-    "-c",
-    type=str,
-    default="configs/binarize_config.yaml",
-    show_default=True,
-    help="binarize config path",
-)
-def binarize(config: str):
+@click.option("--config", "-c", type=str, default="configs/binarize_config.yaml", show_default=True,
+              help="binarize config path")
+@click.option("--model", "-m", type=str, required=True,
+              help="model type: nll[non_lexical_labeler model, first step] fa[forced_alignment model, second step]")
+def binarize(config: str, model: str):
+    assert model in ["nll", "fa"], "model type must in ['nll', 'fa'], please read help info or README.md."
     config = load_yaml(config)
-
     datasets_config = config["datasets_config"]
     assert isinstance(datasets_config, list), f"{datasets_config} is not a list."
 
