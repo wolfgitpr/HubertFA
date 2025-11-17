@@ -309,8 +309,8 @@ class NonLexicalDecoder:
                 words.add_AP(tag_word)
         return non_lexical_words
 
-    def plot(self, melspec):
-        return plot_non_lexical_phonemes(melspec=melspec, cvnt_prob=self.cvnt_probs, frame_duration=self.frame_length)
+    def plot(self, mel_spec):
+        return plot_non_lexical_phonemes(mel_spec=mel_spec, cvnt_prob=self.cvnt_probs, frame_duration=self.frame_length)
 
     def non_lexical_words(self, prob, threshold=0.5, max_gap=5, mix_frames=10, tag=""):
         """

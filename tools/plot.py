@@ -104,7 +104,8 @@ def plot_force_alignment_prob(melspec,
     return fig
 
 
-def plot_non_lexical_phonemes(melspec, cvnt_prob,
+def plot_non_lexical_phonemes(mel_spec,  # [C,T]
+                              cvnt_prob,
                               label=None, v_min=-8, v_max=2, title=None,
                               bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
     label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
@@ -113,20 +114,14 @@ def plot_non_lexical_phonemes(melspec, cvnt_prob,
     if title:
         fig.suptitle(title, fontsize=14)
 
-    T = melspec.shape[-1]
-    x = np.arange(T)
+    C, T = mel_spec.shape
+    ax1.pcolormesh(np.arange(T + 1), np.arange(C + 1), mel_spec, shading='flat', vmin=v_min, vmax=v_max)
 
-    ax1.pcolormesh(x, np.arange(melspec.shape[0]), melspec, shading='auto', vmin=v_min, vmax=v_max)
+    time_axis = np.arange(T) * frame_duration
+    time_edges = np.linspace(0, T * frame_duration, T + 1)
 
-    melspec = melspec.T
-    n_frames = melspec.shape[0]
-
-    time_axis = np.arange(n_frames) * frame_duration
-    time_edges = np.linspace(0, n_frames * frame_duration, n_frames + 1)
-
-    scaled_prob = cvnt_prob * melspec.shape[1]
-
-    cumulative = np.zeros(n_frames)
+    scaled_prob = cvnt_prob * C
+    cumulative = np.zeros(T)
     for i in range(len(scaled_prob)):
         if i == 0:
             cumulative += scaled_prob[0]
@@ -143,8 +138,8 @@ def plot_non_lexical_phonemes(melspec, cvnt_prob,
 
     ax2.pcolormesh(
         time_edges,
-        np.arange(melspec.shape[1] + 1),
-        melspec.T,
+        np.arange(C + 1),
+        mel_spec,
         vmin=v_min,
         vmax=v_max,
         alpha=pcolor_alpha,

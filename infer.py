@@ -50,7 +50,7 @@ def main(ckpt, encoder, folder, g2p, non_speech_phonemes, language, dictionary):
     torch.set_grad_enabled(False)
     model = LitForcedAlignmentTask.load_from_checkpoint(ckpt)
     if encoder is not None:
-        model.unitsEncoder = UnitsEncoder(model.hubert_config, model.melspec_config, encoder, model.device)
+        model.unitsEncoder = UnitsEncoder(model.hubert_config, model.mel_spec_config, encoder, model.device)
     trainer = pl.Trainer(logger=False)
     predictions = trainer.predict(model, dataloaders=dataset, return_predictions=True)
 

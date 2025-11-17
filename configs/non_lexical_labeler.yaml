@@ -3,15 +3,14 @@ model_name: 1117_non_lexical_labeler
 float32_matmul_precision: high
 random_seed: 123456
 
-non_speech_phonemes: # 没有词汇意义的，无需标注、自动识别的音素，如AP(呼吸)、EP(尾息)等
+non_lexical_phonemes: # 没有词汇意义的，无需标注、自动识别的音素，如AP(呼吸)、EP(尾息)等
   - AP
   - EP
 
-datasets_config: # 数据集
-  - configs/datasets_public.yaml
-  - configs/datasets_evaluate.yaml
+datasets_config_paths: # 数据集
+  - configs/datasets_config.yaml
 
-binary_folder: data/binary_units # 预处理结果文件夹
+binary_folder: data/binary_nll # 预处理结果文件夹
 valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
 max_length: 45 # 单条音频最大时长
 
@@ -23,13 +22,13 @@ multiprocess_start_size: 100  # 最小启动数据量
 dataloader_workers: 2
 dataloader_prefetch_factor: 2
 batch_max_length: 100
-binning_length: 1000
+binning_length: 500
 drop_last: False
 
 num_valid_plots: 20 # val、evaluate各项最大绘制数量
 draw_evaluate: True # 绘制evaluate
 
-melspec_config:
+mel_spec_config:
   n_mels: 128
   sample_rate: 44100
   window_size: 1024
@@ -65,7 +64,7 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 2.0, 1.0 ]
+    weights: [ 1.0, 0.0 ]
 
 # trainer
 accelerator: auto
