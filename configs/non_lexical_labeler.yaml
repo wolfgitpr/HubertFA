@@ -1,0 +1,80 @@
+model_name: 1117_non_lexical_labeler
+
+float32_matmul_precision: high
+random_seed: 123456
+
+non_speech_phonemes: # 没有词汇意义的，无需标注、自动识别的音素，如AP(呼吸)、EP(尾息)等
+  - AP
+  - EP
+
+datasets_config: # 数据集
+  - configs/datasets_public.yaml
+  - configs/datasets_evaluate.yaml
+
+binary_folder: data/binary_units # 预处理结果文件夹
+valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
+max_length: 45 # 单条音频最大时长
+
+multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
+multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
+multiprocess_start_size: 100  # 最小启动数据量
+
+# 训练数据加载进程数
+dataloader_workers: 2
+dataloader_prefetch_factor: 2
+batch_max_length: 100
+binning_length: 1000
+drop_last: False
+
+num_valid_plots: 20 # val、evaluate各项最大绘制数量
+draw_evaluate: True # 绘制evaluate
+
+melspec_config:
+  n_mels: 128
+  sample_rate: 44100
+  window_size: 1024
+  hop_size: 512
+  n_fft: 2048
+  f_min: 40
+  f_max: 16000
+  clamp: 0.00001
+
+augmentation_args: # 数据增强，预处理阶段生效
+  random_pitch_shifting:
+    enabled: false
+    range: [ -5., 5. ]
+    num: 1
+
+cvnt_arg:
+  mask_ratio: 0.1
+  encoder_conform_attention_drop: 0.05
+  num_layers: 4
+  encoder_conform_dim: 128
+  encoder_conform_ffn_latent_drop: 0.05
+  encoder_conform_ffn_out_drop: 0.05
+  encoder_conform_kernel_size: 23
+
+optimizer_config:
+  lr: 0.0003
+  gamma: 0.9999
+  total_steps: 20000
+  muon_args:
+    weight_decay: 0.1
+  adamw_args:
+    weight_decay: 0.0
+
+loss_config:
+  losses:
+    weights: [ 2.0, 1.0 ]
+
+# trainer
+accelerator: auto
+devices: auto # num_devices
+precision: bf16-mixed # bf16-mixed , 32-true
+gradient_clip_val: 0.5
+gradient_clip_algorithm: norm #value
+val_check_interval: 1000 # 0.25
+
+save_top_k: 5
+save_every_steps: 1000
+
