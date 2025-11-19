@@ -27,12 +27,14 @@ class BaseTrainer(object):
         self.train_config: dict = load_yaml(train_config_path)
         self.binary_folder = pathlib.Path(self.train_config["binary_folder"])
         self.vocab = load_yaml(self.binary_folder / "vocab.yaml")
+        self.train_config.update(load_yaml(self.binary_folder / "datasets.yaml"))
 
         self.save_model_folder = pathlib.Path("ckpt") / self.train_config["model_name"]
         self.save_model_folder.mkdir(parents=True, exist_ok=True)
 
         shutil.copy(self.binary_folder / "vocab.yaml", self.save_model_folder)
         shutil.copy(self.binary_folder / "config.yaml", self.save_model_folder)
+        shutil.copy(self.binary_folder / "datasets.yaml", self.save_model_folder)
 
         self.copy_source()
         self.evaluate_checkpoint = None

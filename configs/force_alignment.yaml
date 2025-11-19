@@ -1,0 +1,143 @@
+model_name: 1118_fa_base
+
+float32_matmul_precision: high
+random_seed: 123456
+
+extra_phonemes: [ ] # 暂未启用
+silent_phonemes:
+  - SP
+  - <SP>
+  - ''
+  - pau
+  - cl
+  - CL
+  - AP
+  - EP
+  - GS
+
+language_prefix: true # 启用时，自动添加字典key的语种前缀、对多词典隔离
+# word /tab phoneme_1 /空格 phoneme_2 ...
+dictionaries:
+  zh: dictionaries/opencpop-extension.txt
+#  ja: dictionaries/japanese_dict_full.txt
+#  en: dictionaries/ds_cmudict-07b.txt
+#  yue: dictionaries/jyutping_dict.txt
+
+datasets_config_paths: # 数据集
+  - configs/datasets_config.yaml
+
+binary_folder: data/binary_fa # 预处理结果文件夹
+valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
+max_length: 45 # 单条音频最大时长
+units_cache: false # tools/pretreatment_hubert.py 使用hubert预处理units，保存为wav同名npy文件。避免对照实验时反复预处理，开启数据增强时失效。
+
+multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
+multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
+multiprocess_start_size: 100  # 最小启动数据量
+
+# 训练数据加载进程数
+dataloader_workers: 2
+dataloader_prefetch_factor: 2
+batch_max_length: 100
+binning_length: 500
+drop_last: False
+
+num_valid_plots: 20 # val、evaluate各项最大绘制数量
+draw_evaluate: True # 绘制evaluate
+
+augmentation_args: # 数据增强，预处理阶段生效
+  random_pitch_shifting:
+    enabled: false
+    range: [ -5., 5. ]
+    num: 1
+  blank_padding:
+    enabled: false
+    range: [ 0, 5 ] # seconds
+    num: 1
+
+fa_arg:
+  hidden_dims: 192
+  down_sampling_factor: 2
+  down_sampling_times: 3
+  channels_scaleup_factor: 1.5
+  dropout: 0.1
+
+  curves_attention_dropout: 0.1
+
+optimizer_config:
+  lr: 0.0003
+  gamma: 0.9999
+  total_steps: 20000
+  muon_args:
+    weight_decay: 0.1
+  adamw_args:
+    weight_decay: 0.0
+
+loss_config:
+  losses:
+    weights: [ 8.0, 0.1, 1.0, 6.0, 5.0 ]
+    enable_RampUpScheduler: [ False,False,False,True,False ]
+  function:
+    num_bins: 10
+    alpha: 0.999
+    label_smoothing: 0.08
+
+# trainer
+accelerator: auto
+devices: auto # num_devices
+precision: bf16-mixed # bf16-mixed , 32-true
+gradient_clip_val: 0.5
+gradient_clip_algorithm: norm #value
+val_check_interval: 500 # 0.25
+
+save_top_k: 5
+save_every_steps: 500
+
+# 一般情况不改
+hubert_config:
+  encoder: cn_hubert
+  model_path: dependencies/chinese-hubert-base
+  sample_rate: 16000
+  hop_size: 320
+  channel: 768
+
+mel_spec_config:
+  n_mels: 128
+  sample_rate: 44100
+  window_size: 1024
+  hop_size: 512
+  n_fft: 2048
+  f_min: 40
+  f_max: 16000
+  clamp: 0.00001
+
+# 不建议开启
+merged_phoneme: false
+# merge phonemes
+merged_phoneme_groups:
+  - - zh/f
+    - en/f
+  - - zh/m
+    - en/m
+    - ja/m
+  - - zh/w
+    - en/w
+    - ja/w
+  - - zh/s
+    - en/s
+    - ja/s
+  - - zh/n
+    - en/n
+    - ja/n
+  - - zh/c
+    - ja/ts
+  - - zh/y
+    - en/y
+    - ja/y
+  - - zh/l
+    - en/l
+  - - zh/x
+    - ja/sh
+  - - ja/z
+    - en/z
+

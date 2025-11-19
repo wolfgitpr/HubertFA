@@ -13,7 +13,7 @@ from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
-from tools.alignment_decoder import AlignmentDecoder
+from tools.decoder import AlignmentDecoder
 from tools.binarize_util import load_wav, get_curves
 from tools.encoder import UnitsEncoder
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
@@ -30,42 +30,43 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         self.vocab: dict = vocab
         self.config: dict = config
-        self.melspec_config: dict = config["melspec_config"]
+        self.mel_spec_config: dict = config["mel_spec_config"]
         self.hubert_config: dict = config["hubert_config"]
         self.optimizer_config: dict = config["optimizer_config"]
         self.loss_config: dict = config["loss_config"]
-        self.model_config: dict = config["model_config"]
+        self.fa_arg: dict = config["fa_arg"]
 
-        self.hop_size = self.melspec_config["hop_size"]
-        self.window_size = self.melspec_config["window_size"]
-        self.sample_rate = self.melspec_config["sample_rate"]
+        self.hop_size = self.mel_spec_config["hop_size"]
+        self.window_size = self.mel_spec_config["window_size"]
+        self.sample_rate = self.mel_spec_config["sample_rate"]
         self.frame_length = self.hop_size / self.sample_rate
 
+        self.aug_num: int = config['aug_num']
         self.silent_phonemes: list = self.vocab["silent_phonemes"]
         self.ignored_phonemes: list = [x for x in self.silent_phonemes]
         self.language_prefix: bool = self.vocab.get("language_prefix", True)
 
         self.backbone = UNetBackbone(
             input_dims=self.hubert_config["channel"],
-            output_dims=self.model_config["hidden_dims"],
-            hidden_dims=self.model_config["hidden_dims"],
+            output_dims=self.fa_arg["hidden_dims"],
+            hidden_dims=self.fa_arg["hidden_dims"],
             block=ResidualBasicBlock,
             down_sampling=DownSampling,
             up_sampling=UpSampling,
-            down_sampling_factor=self.model_config["down_sampling_factor"],  # 3
-            down_sampling_times=self.model_config["down_sampling_times"],  # 7
-            channels_scaleup_factor=self.model_config["channels_scaleup_factor"],  # 1.5
-            dropout=self.model_config["dropout"],
+            down_sampling_factor=self.fa_arg["down_sampling_factor"],  # 2
+            down_sampling_times=self.fa_arg["down_sampling_times"],  # 3
+            channels_scaleup_factor=self.fa_arg["channels_scaleup_factor"],  # 1.5
+            dropout=self.fa_arg["dropout"],
         )
 
         self.head = nn.Linear(
-            self.model_config["hidden_dims"], self.vocab["vocab_size"] + 2
+            self.fa_arg["hidden_dims"], self.vocab["vocab_size"] + 2
         )
 
         self.curves_edge_fusion = PowerCurveEdgeFusion(
-            feature_dim=self.model_config["hidden_dims"],
+            feature_dim=self.fa_arg["hidden_dims"],
             hidden_dim=64,
-            dropout=self.model_config["curves_attention_dropout"]
+            dropout=self.fa_arg["curves_attention_dropout"]
         )
 
         self.losses_names = [
@@ -113,14 +114,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.CTC_GHM_loss_fn = CTCGHMLoss(alpha=1 - 1e-3)
 
         self.unitsEncoder = None
-        self.decoder = AlignmentDecoder(self.vocab, self.class_names, self.sample_rate, self.hop_size)
+        self.decoder = AlignmentDecoder(self.vocab, self.sample_rate, self.hop_size)
 
         # validation_step_outputs
         self.validation_step_outputs = {"losses": [], "tiers-0": [], "tiers-1": []}
-
-        self.loss_weights = config.get('loss_weights', [1.0] * self.num_classes)
-        self.focal_gamma = config.get('focal_gamma', 2.0)
-        self.dice_smooth = config.get('dice_smooth', 1.0)
 
     def load_pretrained(self, pretrained_model):
         self.backbone = pretrained_model.backbone
@@ -149,7 +146,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def on_predict_start(self):
         if self.unitsEncoder is None:
-            self.unitsEncoder = UnitsEncoder(self.hubert_config, self.melspec_config, device=self.device)
+            self.unitsEncoder = UnitsEncoder(self.hubert_config, self.mel_spec_config, device=self.device)
 
     def predict_step(self, batch, batch_idx):
         wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = batch
@@ -157,8 +154,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
                   ph_seq]
         waveform, wav_length, n_frames = load_wav(wav_path, self.sample_rate, self.hop_size,
                                                   self.device)  # (L,) seconds
-        input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.melspec_config["sample_rate"],
-                                                  self.melspec_config["hop_size"])  # [B, T, C]
+        input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.mel_spec_config["sample_rate"],
+                                                  self.mel_spec_config["hop_size"])  # [B, T, C]
         curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [B, C, T]
 
         with torch.no_grad():
@@ -177,79 +174,83 @@ class LitForcedAlignmentTask(pl.LightningModule):
         words.clear_language_prefix()
         return wav_path, wav_length, words
 
-    def cross_entropy_and_focal_loss(self, logits, targets):
-        log_probs = F.log_softmax(logits, dim=1)
-        weights = torch.tensor(self.loss_weights, device=logits.device)
-
-        ce_loss = F.nll_loss(log_probs, targets, weight=weights)
-        ce_per_element = F.nll_loss(log_probs, targets, reduction='none')
-        pt = torch.exp(-ce_per_element)
-        focal_loss = ((1 - pt) ** self.focal_gamma * ce_per_element).mean()
-
-        return ce_loss, focal_loss
-
-    def dice_loss(self, logits, targets):
-        probs = F.softmax(logits, dim=1)
-        batch_size, num_classes, seq_len = probs.shape
-
-        target_mask = torch.zeros_like(probs)
-        targets_expanded = targets.unsqueeze(1).expand(-1, num_classes, -1)
-        target_mask.scatter_(1, targets_expanded, 1)
-
-        target_mask = target_mask[:, 1:, :]
-        pred_masks = probs[:, 1:, :]
-
-        intersection = (pred_masks * target_mask).sum(dim=(0, 2))
-        cardinality_pred = pred_masks.sum(dim=(0, 2))
-        cardinality_target = target_mask.sum(dim=(0, 2))
-
-        valid_classes = (cardinality_target > 0)
-        if not valid_classes.any():
-            return torch.tensor(0.0, device=logits.device)
-
-        dice = (2 * intersection[valid_classes] + self.dice_smooth) / \
-               (cardinality_pred[valid_classes] + cardinality_target[valid_classes] + self.dice_smooth)
-
-        return (1 - dice).mean()
-
     def _get_consistency_loss(
-            self, ph_frame_logits, ph_edge_logits, input_feature_lengths
+            self,
+            ph_frame_logits,  # [B,T,C]
+            ph_edge_logits,  # [B,T]
+            input_feature_lengths
     ):
-        original_frame_logits = ph_frame_logits[0:1]  # (1, T, vocab_size)
-        original_edge_logits = ph_edge_logits[0:1]  # (1, T)
+        def compute_consistency_for_frame_logits(logits):
+            B, T, C = logits.shape
 
-        augmented_frame_logits = ph_frame_logits[1:]  # (B-1, T, vocab_size)
-        augmented_edge_logits = ph_edge_logits[1:]  # (B-1, T)
+            if self.aug_num <= 1:
+                return torch.tensor(0.0, device=self.device)
 
-        B_aug = augmented_frame_logits.shape[0]
-        T = augmented_frame_logits.shape[1]
+            assert B % self.aug_num == 0, f"batch size must be divisible by aug_num - {self.aug_num}."
 
-        if B_aug == 0:
-            return torch.tensor(0.0, device=self.device)
+            batch_size = B // self.aug_num
+            if batch_size == 0:
+                return torch.tensor(0.0, device=self.device)
 
-        original_frame_expanded = original_frame_logits.repeat(B_aug, 1, 1)  # (B-1, T, vocab_size)
-        original_edge_expanded = original_edge_logits.repeat(B_aug, 1)  # (B-1, T)
+            grouped_logits = logits.view(batch_size, self.aug_num, T, C)  # [B, aug_num, T, C]
+            original_logits = grouped_logits[:, 0]  # [B, T, C]
+            augmented_logits = grouped_logits[:, 1:]  # [B, aug_num-1, T, C]
 
-        mask = torch.arange(T, device=self.device)  # (T,)
-        mask = mask.unsqueeze(0).repeat(B_aug, 1)  # (B_aug, T)
-        time_mask = (
-            (mask < input_feature_lengths[1:].unsqueeze(1))
-            .to(torch.bool)
-            .unsqueeze(-1)
-        )
-        edge_mask = time_mask.squeeze(-1)
+            consistency_losses = []
+            for i in range(augmented_logits.size(1)):
+                aug_logit = augmented_logits[:, i]  # [B, T, C]
 
-        frame_consistency_loss = self.MSE_loss_fn(
-            augmented_frame_logits * time_mask,
-            original_frame_expanded * time_mask
-        )
+                original_probs = F.softmax(original_logits, dim=-1)
+                aug_probs = F.softmax(aug_logit, dim=-1)
 
-        edge_consistency_loss = self.MSE_loss_fn(
-            augmented_edge_logits * edge_mask,
-            original_edge_expanded * edge_mask
-        )
-        consistency_loss = frame_consistency_loss + edge_consistency_loss
-        return consistency_loss
+                kl_loss = F.kl_div(aug_probs.log(), original_probs, reduction='batchmean', log_target=False)
+                mse_loss = F.mse_loss(aug_probs, original_probs)
+
+                combined_loss = 0.7 * kl_loss + 0.3 * mse_loss
+                consistency_losses.append(combined_loss)
+
+            if consistency_losses:
+                return torch.stack(consistency_losses).mean()
+            else:
+                return torch.tensor(0.0, device=self.device)
+
+        def compute_consistency_for_edge_logits(logits):
+            B, T = logits.shape
+
+            if self.aug_num <= 1:
+                return torch.tensor(0.0, device=self.device)
+
+            assert B % self.aug_num == 0, f"batch size must be divisible by aug_num - {self.aug_num}."
+
+            batch_size = B // self.aug_num
+            if batch_size == 0:
+                return torch.tensor(0.0, device=self.device)
+
+            grouped_logits = logits.view(batch_size, self.aug_num, T)  # [B, aug_num, T]
+            original_logits = grouped_logits[:, 0]  # [B, T]
+            augmented_logits = grouped_logits[:, 1:]  # [B, aug_num-1, T]
+
+            consistency_losses = []
+            for i in range(augmented_logits.size(1)):
+                aug_logit = augmented_logits[:, i]  # [B, T]
+
+                original_probs = torch.sigmoid(original_logits)
+                aug_probs = torch.sigmoid(aug_logit)
+
+                mse_loss = F.mse_loss(aug_probs, original_probs)
+                consistency_losses.append(mse_loss)
+
+            if consistency_losses:
+                return torch.stack(consistency_losses).mean()
+            else:
+                return torch.tensor(0.0, device=self.device)
+
+        frame_consistency_loss = compute_consistency_for_frame_logits(ph_frame_logits)
+        edge_consistency_loss = compute_consistency_for_edge_logits(ph_edge_logits)
+
+        total_consistency_loss = (frame_consistency_loss + edge_consistency_loss) / 2
+
+        return total_consistency_loss
 
     def _get_loss(
             self,

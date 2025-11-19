@@ -19,9 +19,9 @@ from tools.multiprocess_utils import chunked_multiprocess_run
 class BaseBinarizer(object):
     def __init__(self, binary_config_path):
         self.binary_config = load_yaml(binary_config_path)
-        self.melspec_config = self.binary_config['mel_spec_config']
+        self.mel_spec_config = self.binary_config['mel_spec_config']
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.get_melspec = MelSpecExtractor(**self.melspec_config, device=self.device)
+        self.get_mel_spec = MelSpecExtractor(**self.mel_spec_config, device=self.device)
         self.unitsEncoder = UnitsEncoder(self.binary_config['hubert_config'], self.binary_config['mel_spec_config'],
                                          device=self.device)
 
@@ -36,13 +36,24 @@ class BaseBinarizer(object):
         self.valid_sets = []
         self.valid_set_size = self.binary_config['valid_set_size']
 
-        self.hop_size = self.melspec_config["hop_size"]
-        self.window_size = self.melspec_config["window_size"]
-        self.sample_rate = self.melspec_config["sample_rate"]
+        self.hop_size = self.mel_spec_config["hop_size"]
+        self.window_size = self.mel_spec_config["window_size"]
+        self.sample_rate = self.mel_spec_config["sample_rate"]
         self.frame_length = self.hop_size / self.sample_rate
         self.max_length = self.binary_config['max_length']
 
+        self.aug_args: dict = self.binary_config['augmentation_args']
+        self.aug_num: int = (
+                1 + (
+            self.aug_args['random_pitch_shifting']['num'] if self.aug_args['random_pitch_shifting'][
+                'enabled'] else 0) +
+                (self.aug_args['blank_padding']['num'] if self.aug_args['blank_padding'][
+                    'enabled'] else 0)
+        )
+
         shutil.copy(binary_config_path, self.binary_folder / 'config.yaml')
+        self.export_config(self.binary_folder / 'datasets.yaml',
+                           {"aug_num": self.aug_num, "datasets": self.datasets})
 
     def load_datasets(self):
         datasets_config_paths = self.binary_config["datasets_config_paths"]
@@ -255,7 +266,7 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
             units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
                                               self.hop_size, aug=True,
                                               aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
-            mel_spec = self.get_melspec(waveform) if not train else None  # [B, C, T]
+            mel_spec = self.get_mel_spec(waveform) if not train else None  # [B, C, T]
             B, T, C = units.shape
 
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
@@ -282,8 +293,8 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
 class ForcedAlignmentBinarizer(BaseBinarizer):
     def __init__(self, binary_config):
         super().__init__(binary_config)
-        self.units_cache = self.binary_config.get("units_cache", True)
-        self.extra_phonemes = self.binary_config.get("extra_phonemes", [])
+        self.units_cache = self.binary_config['units_cache']
+        self.extra_phonemes = self.binary_config['extra_phonemes']
         self.silent_phonemes = self.binary_config['silent_phonemes']
 
         self.language_prefix = self.binary_config['language_prefix']
@@ -292,9 +303,6 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
             'merged_phoneme'] else []
 
         self.hubert_channel = self.binary_config['hubert_config']["channel"]
-        aug_args = self.binary_config['augmentation_args']
-        self.aug_num = 1 + (aug_args['random_pitch_shifting']['num'] if aug_args['random_pitch_shifting'][
-            'enabled'] else 0) + (aug_args['blank_padding']['num'] if aug_args['blank_padding']['enabled'] else 0)
 
         self.vocab = self.get_vocab()
         self.export_config(self.binary_folder / 'vocab.yaml', self.vocab)
@@ -467,14 +475,14 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
             npy_loaded = False
             # units encode
             npy_path = pathlib.Path(wav_path).with_suffix(".npy")
-            if npy_path.exists() and self.units_cache:
+            if npy_path.exists() and self.units_cache and self.aug_num == 1:
                 units = torch.as_tensor(np.load(npy_path))
                 npy_loaded = True if units.shape[1] > 0 else False
             if not npy_loaded:
                 units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
                                                   self.hop_size, aug=True,
                                                   aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
-            mel_spec = self.get_melspec(waveform) if not train else None  # [B, C, T]
+            mel_spec = self.get_mel_spec(waveform) if not train else None  # [B, C, T]
 
             B, T, C = units.shape
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."

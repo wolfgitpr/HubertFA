@@ -20,9 +20,8 @@ def log_softmax(x, axis=-1):
 
 
 class AlignmentDecoder:
-    def __init__(self, vocab, class_names, sample_rate, hop_size):
+    def __init__(self, vocab, sample_rate, hop_size):
         self.vocab = vocab
-        self.non_lexical_phs: list[str] = class_names
         self.sample_rate = sample_rate
         self.hop_size = hop_size
         self.frame_length = self.hop_size / self.sample_rate

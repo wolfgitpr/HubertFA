@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 import networks.g2p
 from tools.align_word import WordList, Word, Phoneme
-from tools.alignment_decoder import AlignmentDecoder
+from tools.decoder import AlignmentDecoder
 from tools.config_utils import check_configs
 from tools.export_tool import Exporter
 from tools.post_processing import post_processing, find_all_duplicate_phonemes, remove_outliers_per_position

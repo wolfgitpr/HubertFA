@@ -8,7 +8,7 @@ import torch.optim.lr_scheduler as lr_scheduler_module
 
 from networks.layer.backbone.cvnt import CVNT
 from networks.optimizer.muon import Muon_AdamW
-from tools.alignment_decoder import NonLexicalDecoder
+from tools.decoder import NonLexicalDecoder
 from tools.binarize_util import load_wav
 from tools.get_melspec import MelSpecExtractor
 
@@ -37,7 +37,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         self.non_lexical_phonemes: list = self.vocab["non_lexical_phonemes"]
         self.non_lexical_mask_ratio: float = self.config["cvnt_arg"]["mask_ratio"]
 
-        self.aug_num: int = 1
+        self.aug_num: int = config['aug_num']
         self.class_names: list = ['None', *self.non_lexical_phonemes]
         self.num_classes: int = len(self.class_names)
         assert self.num_classes > 1, "non_lexical_phonemes must have at least one phoneme."
@@ -153,16 +153,20 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         return (1 - dice).mean()
 
     def _get_consistency_loss(
-            self, cvnt_logits
+            self,
+            cvnt_logits  # [B, N, T]
     ):
+        B, N, T = cvnt_logits.shape
         if self.aug_num <= 1:
             return torch.tensor(0.0, device=self.device)
 
-        batch_size = cvnt_logits.size(0) // self.aug_num
+        assert B % self.aug_num == 0, f"batch size must be divisible by aug_num - {self.aug_num}."
+
+        batch_size = B // self.aug_num
         if batch_size == 0:
             return torch.tensor(0.0, device=self.device)
 
-        grouped_logits = cvnt_logits.view(batch_size, self.aug_num, -1, cvnt_logits.size(-1))  # [B, aug_num, N, T]
+        grouped_logits = cvnt_logits.view(batch_size, self.aug_num, -1, T)  # [B, aug_num, N, T]
 
         original_logits = grouped_logits[:, 0]  # [B, N, T]
         augmented_logits = grouped_logits[:, 1:]  # [B, aug_num-1, N, T]
@@ -174,13 +178,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
             original_probs = F.softmax(original_logits, dim=1)
             aug_probs = F.softmax(aug_logit, dim=1)
 
-            kl_loss = F.kl_div(
-                aug_probs.log(),
-                original_probs,
-                reduction='batchmean',
-                log_target=False
-            )
-
+            kl_loss = F.kl_div(aug_probs.log(), original_probs, reduction='batchmean', log_target=False)
             mse_loss = F.mse_loss(aug_probs, original_probs)
 
             combined_loss = 0.7 * kl_loss + 0.3 * mse_loss
