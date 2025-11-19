@@ -19,9 +19,11 @@ from tools.multiprocess_utils import chunked_multiprocess_run
 class BaseBinarizer(object):
     def __init__(self, binary_config_path):
         self.binary_config = load_yaml(binary_config_path)
-        self.melspec_config = self.binary_config['melspec_config']
+        self.melspec_config = self.binary_config['mel_spec_config']
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.get_melspec = MelSpecExtractor(**self.melspec_config, device=self.device)
+        self.unitsEncoder = UnitsEncoder(self.binary_config['hubert_config'], self.binary_config['mel_spec_config'],
+                                         device=self.device)
 
         self.datasets = self.load_datasets()
         self.binary_folder = pathlib.Path(self.binary_config['binary_folder'])
@@ -160,6 +162,7 @@ class BaseBinarizer(object):
 
             df['language'] = dataset['language']
             df["label_type"] = dataset['label_type']
+            df["wav_path"] = df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
             df["validation"] = df["name"].apply(lambda name: name.startswith(tuple_prefixes)) \
                 if len(tuple_prefixes) > 0 else False
             meta_data_df = pd.concat([meta_data_df, df]) if len(meta_data_df) >= 1 else df
@@ -167,7 +170,6 @@ class BaseBinarizer(object):
         meta_data_df["ph_seq"] = meta_data_df["ph_seq"].apply(
             lambda raw_str: ([ph for ph in raw_str.split(" ")] if isinstance(raw_str, str) else [])
         )
-        meta_data_df["wav_path"] = meta_data_df["name"].apply(lambda name: str(wav_folder / (str(name) + ".wav")))
         meta_data_df["ph_dur"] = meta_data_df["ph_dur"].apply(
             lambda x: [float(i) for i in x.split(" ")] if isinstance(x, str) else []
         )
@@ -250,15 +252,18 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
             non_lexical_target = np.array([non_lexical_target])
             non_lexical_intervals = np.array([non_lexical_intervals])
 
-            mel_spec = self.get_melspec(waveform).cpu().numpy()  # [B, C, T]
+            units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
+                                              self.hop_size, aug=True,
+                                              aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
+            mel_spec = self.get_melspec(waveform) if not train else None  # [B, C, T]
+            B, T, C = units.shape
 
-            B, C, T = mel_spec.shape
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
 
             return {
                 'name': str(_item["name"]),
-                'input_feature': mel_spec.astype("float32"),  # (B,C,T)
-                'mel_spec': mel_spec.astype("float32") if train else mel_spec[0].astype("float32"),  # (1,C,T)
+                'input_feature': units.cpu().numpy().astype("float32"),  # [B, T, C]
+                'mel_spec': mel_spec.cpu().numpy().astype("float32") if not train else np.array([0]),  # (1,C,T)
                 "non_lexical_target": non_lexical_target.astype("int32"),  # (B,N,T)
                 "non_lexical_intervals": non_lexical_intervals.astype("int32"),  # (B,N,2)
                 "wav_length": wav_length
@@ -277,8 +282,6 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
 class ForcedAlignmentBinarizer(BaseBinarizer):
     def __init__(self, binary_config):
         super().__init__(binary_config)
-        self.unitsEncoder = UnitsEncoder(self.binary_config['hubert_config'], self.binary_config['melspec_config'],
-                                         device=self.device)
         self.units_cache = self.binary_config.get("units_cache", True)
         self.extra_phonemes = self.binary_config.get("extra_phonemes", [])
         self.silent_phonemes = self.binary_config['silent_phonemes']

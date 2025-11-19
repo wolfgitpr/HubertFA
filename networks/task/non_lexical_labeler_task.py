@@ -24,6 +24,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
 
         self.vocab: dict = vocab
         self.config: dict = config
+        self.hubert_config: dict = config['hubert_config']
         self.mel_spec_config: dict = config["mel_spec_config"]
         self.optimizer_config: dict = config["optimizer_config"]
         self.loss_config: dict = config["loss_config"]
@@ -33,18 +34,21 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         self.sample_rate = self.mel_spec_config["sample_rate"]
         self.frame_length = self.hop_size / self.sample_rate
 
-        self.non_lexical_target: list = self.vocab["non_lexical_phonemes"]
+        self.non_lexical_phonemes: list = self.vocab["non_lexical_phonemes"]
         self.non_lexical_mask_ratio: float = self.config["cvnt_arg"]["mask_ratio"]
 
-        self.class_names: list = ['None', *self.non_lexical_target]
+        self.aug_num: int = 1
+        self.class_names: list = ['None', *self.non_lexical_phonemes]
         self.num_classes: int = len(self.class_names)
         assert self.num_classes > 1, "non_lexical_phonemes must have at least one phoneme."
 
-        self.cvnt = CVNT(config['cvnt_arg'], in_channels=self.mel_spec_config['n_mels'],
+        self.cvnt = CVNT(config['cvnt_arg'], in_channels=self.hubert_config['channel'],
                          output_size=self.num_classes)
 
         self.losses_names = [
-            "cvnt_loss",
+            "ce_loss",
+            "focal_loss",
+            "dice_loss",
             "consistency_loss",
             "total_loss",
         ]
@@ -58,8 +62,8 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         self.validation_step_outputs = {"losses": [], "tiers-0": [], "tiers-1": []}
 
         self.loss_weights = config.get('loss_weights', [1.0] * self.num_classes)
-        self.focal_gamma = config.get('focal_gamma', 2.0)
-        self.dice_smooth = config.get('dice_smooth', 1.0)
+        self.focal_gamma = config.get('focal_gamma', 3.0)
+        self.dice_smooth = config.get('dice_smooth', 0.1)
 
         self.get_mel_spec = None
 
@@ -74,23 +78,26 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
             self.get_mel_spec = MelSpecExtractor(**self.mel_spec_config, device=self.device)
 
     def make_non_lexical_mask(self, shape, non_lexical_intervals):
-        B, C, T = shape
-        non_lexical_mask = torch.zeros((B, 1, T), dtype=torch.bool, device=self.device)
+        B, T, C = shape
+        non_lexical_mask = torch.zeros((B, T, 1), dtype=torch.bool, device=self.device)
 
         if self.non_lexical_mask_ratio > 0:
-            non_lexical_interval = non_lexical_intervals[0]
-            if len(non_lexical_interval) > 0:
-                non_lexical_idx = random.choices(range(len(non_lexical_interval)),
-                                                 k=int(len(non_lexical_interval) * self.non_lexical_mask_ratio))
-                for idx in non_lexical_idx:
-                    start_frame = non_lexical_interval[idx][0]
-                    end_frame = non_lexical_interval[idx][1]
-                    ph_len = end_frame - start_frame
+            mask_idxes = random.choices(range(B), k=int(B * self.non_lexical_mask_ratio))
 
-                    if ph_len > 0:
-                        mask_len = max(1, int(self.non_lexical_mask_ratio * ph_len))
-                        offset = random.randint(0, max(0, ph_len - mask_len))
-                        non_lexical_mask[:, :, start_frame + offset:start_frame + offset + mask_len] = True
+            for mask_idx in mask_idxes:
+                non_lexical_interval = non_lexical_intervals[mask_idx]
+                if len(non_lexical_interval) > 0:
+                    non_lexical_idx = random.choices(range(len(non_lexical_interval)),
+                                                     k=int(len(non_lexical_interval) * self.non_lexical_mask_ratio))
+                    for idx in non_lexical_idx:
+                        start_frame = non_lexical_interval[idx][0]
+                        end_frame = non_lexical_interval[idx][1]
+                        ph_len = end_frame - start_frame
+
+                        if ph_len > 0:
+                            mask_len = max(1, int(self.non_lexical_mask_ratio * ph_len))
+                            offset = random.randint(0, max(0, ph_len - mask_len))
+                            non_lexical_mask[mask_idx, start_frame + offset:start_frame + offset + mask_len, :] = True
         return non_lexical_mask
 
     def predict_step(self, batch, batch_idx):
@@ -145,59 +152,61 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
 
         return (1 - dice).mean()
 
-    def cvnt_loss(self, cvnt_logits, non_lexical_targets):
-        target_indices = torch.argmax(non_lexical_targets, dim=1)
-        ce_loss, focal_loss = self.cross_entropy_and_focal_loss(cvnt_logits, target_indices)
-        dice_loss = self.dice_loss(cvnt_logits, target_indices)
-        return 0.5 * ce_loss + 0.3 * focal_loss + 0.2 * dice_loss
-
     def _get_consistency_loss(
-            self, cvnt_logits, input_feature_lengths
+            self, cvnt_logits
     ):
-        B_aug = cvnt_logits.shape[0]
-        T = cvnt_logits.shape[-1]
-
-        if B_aug <= 1 or len(input_feature_lengths) <= 1:
+        if self.aug_num <= 1:
             return torch.tensor(0.0, device=self.device)
 
-        min_length = min(B_aug - 1, len(input_feature_lengths) - 1)
-        if min_length <= 0:
+        batch_size = cvnt_logits.size(0) // self.aug_num
+        if batch_size == 0:
             return torch.tensor(0.0, device=self.device)
 
-        original_cvnt_logits = cvnt_logits[0:1]  # (1, N, T)
-        augmented_cvnt_logits = cvnt_logits[1:1 + min_length]  # (min_length, N, T)
+        grouped_logits = cvnt_logits.view(batch_size, self.aug_num, -1, cvnt_logits.size(-1))  # [B, aug_num, N, T]
 
-        original_cvnt_expanded = original_cvnt_logits.repeat(min_length, 1, 1)  # (min_length, N, T)
+        original_logits = grouped_logits[:, 0]  # [B, N, T]
+        augmented_logits = grouped_logits[:, 1:]  # [B, aug_num-1, N, T]
 
-        mask = torch.arange(T, device=self.device)  # (T,)
-        mask = mask.unsqueeze(0).repeat(min_length, 1)  # (min_length, T)
+        consistency_losses = []
+        for i in range(augmented_logits.size(1)):
+            aug_logit = augmented_logits[:, i]  # [B, N, T]
 
-        valid_lengths = input_feature_lengths[1:1 + min_length]
-        time_mask = (
-            (mask < valid_lengths.unsqueeze(1))
-            .to(torch.bool)
-            .unsqueeze(-1)
-        )
-        cvnt_mask = time_mask.permute(0, 2, 1)  # (min_length, 1, T) for cvnt_logits
+            original_probs = F.softmax(original_logits, dim=1)
+            aug_probs = F.softmax(aug_logit, dim=1)
 
-        cvnt_consistency_loss = self.MSE_loss_fn(
-            augmented_cvnt_logits * cvnt_mask,
-            original_cvnt_expanded * cvnt_mask
-        )
+            kl_loss = F.kl_div(
+                aug_probs.log(),
+                original_probs,
+                reduction='batchmean',
+                log_target=False
+            )
 
-        return cvnt_consistency_loss
+            mse_loss = F.mse_loss(aug_probs, original_probs)
+
+            combined_loss = 0.7 * kl_loss + 0.3 * mse_loss
+            consistency_losses.append(combined_loss)
+
+        if consistency_losses:
+            consistency_loss = torch.stack(consistency_losses).mean()
+        else:
+            consistency_loss = torch.tensor(0.0, device=self.device)
+
+        return consistency_loss
 
     def _get_loss(
             self,
             cvnt_logits,  # [B, N, T]
-            input_feature_lengths,  # (B)
             non_lexical_target
     ):
-        cvnt_loss = self.cvnt_loss(cvnt_logits, non_lexical_target)
-        consistency_loss = self._get_consistency_loss(cvnt_logits, input_feature_lengths)
+        target_indices = torch.argmax(non_lexical_target, dim=1)
+        ce_loss, focal_loss = self.cross_entropy_and_focal_loss(cvnt_logits, target_indices)
+        dice_loss = self.dice_loss(cvnt_logits, target_indices)
+        consistency_loss = self._get_consistency_loss(cvnt_logits)
 
         losses = [
-            cvnt_loss,
+            ce_loss,
+            focal_loss,
+            dice_loss,
             consistency_loss
         ]
 
@@ -206,14 +215,14 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
     def forward(self,
                 x,  # [B, T, C]
                 ):
-        cvnt_logits = self.cvnt(x.transpose(1, 2))  # [B, N, T]
+        cvnt_logits = self.cvnt(x)  # [B, N, T]
         return cvnt_logits
 
     def training_step(self, batch, batch_idx):
         (
             name,
             mel_spec,
-            input_feature,  # (B, n_mels, T)
+            input_feature,  # [B, T, C]
             input_feature_lengths,  # (B)
             non_lexical_target,
             non_lexical_intervals,  # [B,N,T]
@@ -226,14 +235,14 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
             input_feature
         )
         masked_non_lexical_target = torch.where(
-            non_lexical_mask,
+            non_lexical_mask.transpose(1, 2),
             torch.zeros_like(non_lexical_target),
             non_lexical_target
         )
 
         cvnt_logits = self.forward(masked_input)
 
-        losses = self._get_loss(cvnt_logits, input_feature_lengths, masked_non_lexical_target)
+        losses = self._get_loss(cvnt_logits, masked_non_lexical_target)
         total_loss = (torch.stack(losses) * self.losses_weights).sum()
         losses.append(total_loss)
 
@@ -270,7 +279,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         (
             name,
             mel_spec,
-            input_feature,  # (B, n_mels, T)
+            input_feature,  # [B, T, C]
             input_feature_lengths,  # (B)
             non_lexical_target,
             non_lexical_intervals,  # [B,N,T]
@@ -280,11 +289,11 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         self.decoder.decode(
             cvnt_logits=cvnt_logits.float().cpu().numpy(),
             wav_length=None,
-            non_lexical_phonemes=self.vocab["non_lexical_phonemes"][1:]
+            non_lexical_phonemes=self.non_lexical_phonemes
         )
 
         if dataloader_idx == 0:
-            losses = self._get_loss(cvnt_logits, input_feature_lengths, non_lexical_target)
+            losses = self._get_loss(cvnt_logits, non_lexical_target)
             total_loss = (torch.stack(losses) * self.losses_weights).sum()
             losses.append(total_loss)
             losses = torch.stack(losses)

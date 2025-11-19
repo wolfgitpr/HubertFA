@@ -235,7 +235,7 @@ def non_lexical_labeler_collate_fn(batch):
         mel_spec: (B T)
     """
     # Calculate maximum lengths for padding
-    input_feature_lengths = torch.tensor([item[2].shape[-1] for item in batch])
+    input_feature_lengths = torch.tensor([item[2].shape[-2] for item in batch])
     max_len = input_feature_lengths.max().item()
 
     padded_batch = []
@@ -246,8 +246,8 @@ def non_lexical_labeler_collate_fn(batch):
                 torch.as_tensor(item[1]), (0, max_len - item[1].shape[-1]), mode='constant', value=0
             ),  # mel_spec
             torch.nn.functional.pad(
-                torch.as_tensor(item[2]), (0, max_len - item[2].shape[-1], 0, 0, 0, 0), mode='constant', value=0
-            ),  # input_feature[mel_spec]
+                torch.as_tensor(item[2]), (0, 0, 0, max_len - item[2].shape[-2], 0, 0), mode='constant', value=0
+            ),  # input_feature
             pad_2d(item[3], max_len),  # non_lexical_target
             item[4],  # non_lexical_interval
         ))
@@ -255,7 +255,7 @@ def non_lexical_labeler_collate_fn(batch):
     return (
         [x[0] for x in padded_batch],  # names
         torch.cat([x[1] for x in padded_batch], dim=0),  # mel_specs (B, C_mel, T)
-        torch.cat([x[2] for x in padded_batch], dim=0),  # input_features (B, C, T)
+        torch.cat([x[2] for x in padded_batch], dim=0),  # input_features (B, T, C)
         input_feature_lengths.repeat(repeat_num),
         torch.cat([x[3] for x in padded_batch], dim=0).repeat(repeat_num, 1, 1),  # non_lexical_target (B, N, T)
         [x[4] for x in padded_batch],  # non_lexical_intervals (B, N, T)

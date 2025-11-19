@@ -114,6 +114,9 @@ def plot_non_lexical_phonemes(mel_spec,  # [C,T]
     if title:
         fig.suptitle(title, fontsize=14)
 
+    if mel_spec.ndim == 3:
+        mel_spec = mel_spec.squeeze(0)
+
     C, T = mel_spec.shape
     ax1.pcolormesh(np.arange(T + 1), np.arange(C + 1), mel_spec, shading='flat', vmin=v_min, vmax=v_max)
 

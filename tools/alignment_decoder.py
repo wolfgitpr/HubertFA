@@ -297,7 +297,8 @@ class NonLexicalDecoder:
         if wav_length is not None:
             num_frames = int((wav_length * self.sample_rate + 0.5) / self.hop_size)
             cvnt_logits = cvnt_logits[:, :, :num_frames]
-        cvnt_logits[:, 1:, lexical_mask] = 0
+        if lexical_mask is not None:
+            cvnt_logits[:, 1:, lexical_mask] = 0
         self.cvnt_probs = softmax(cvnt_logits, axis=1)[0]
 
         words = WordList()
@@ -310,7 +311,8 @@ class NonLexicalDecoder:
         return non_lexical_words
 
     def plot(self, mel_spec):
-        return plot_non_lexical_phonemes(mel_spec=mel_spec, cvnt_prob=self.cvnt_probs, frame_duration=self.frame_length)
+        return plot_non_lexical_phonemes(mel_spec=mel_spec, cvnt_prob=self.cvnt_probs, label=self.non_lexical_phs,
+                                         frame_duration=self.frame_length)
 
     def non_lexical_words(self, prob, threshold=0.5, max_gap=5, mix_frames=10, tag=""):
         """

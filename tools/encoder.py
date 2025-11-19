@@ -21,7 +21,7 @@ class UnitsEncoder(torch.nn.Module):
             encoder_ckpt = hubert_config.get("model_path", None)
 
         is_loaded_encoder = False
-        if self.encoder == 'cnhubert':
+        if self.encoder == 'cn_hubert':
             self.model = Audio2CNHubert(encoder_ckpt, device=device)
             is_loaded_encoder = True
         assert is_loaded_encoder, f" [x] Unknown units encoder: {self.encoder}"

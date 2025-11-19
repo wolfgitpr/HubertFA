@@ -1,4 +1,4 @@
-model_name: 1117_non_lexical_labeler
+model_name: 1118_nll_base
 
 float32_matmul_precision: high
 random_seed: 123456
@@ -8,7 +8,8 @@ non_lexical_phonemes: # 没有词汇意义的，无需标注、自动识别的�
   - EP
 
 datasets_config_paths: # 数据集
-  - configs/datasets_config.yaml
+  - configs/datasets_public.yaml
+  - configs/datasets_evaluate.yaml
 
 binary_folder: data/binary_nll # 预处理结果文件夹
 valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
@@ -28,33 +29,28 @@ drop_last: False
 num_valid_plots: 20 # val、evaluate各项最大绘制数量
 draw_evaluate: True # 绘制evaluate
 
-mel_spec_config:
-  n_mels: 128
-  sample_rate: 44100
-  window_size: 1024
-  hop_size: 512
-  n_fft: 2048
-  f_min: 40
-  f_max: 16000
-  clamp: 0.00001
-
 augmentation_args: # 数据增强，预处理阶段生效
   random_pitch_shifting:
     enabled: false
     range: [ -5., 5. ]
     num: 1
+  blank_padding:
+    enabled: false
+    range: [ 0, 5 ] # seconds
+    num: 1
 
 cvnt_arg:
-  mask_ratio: 0.1
+  mask_ratio: 0.2
   encoder_conform_attention_drop: 0.05
   num_layers: 4
+
   encoder_conform_dim: 128
   encoder_conform_ffn_latent_drop: 0.05
   encoder_conform_ffn_out_drop: 0.05
-  encoder_conform_kernel_size: 23
+  encoder_conform_kernel_size: 31
 
 optimizer_config:
-  lr: 0.0003
+  lr: 0.0005
   gamma: 0.9999
   total_steps: 20000
   muon_args:
@@ -64,7 +60,7 @@ optimizer_config:
 
 loss_config:
   losses:
-    weights: [ 1.0, 0.0 ]
+    weights: [ 0.5, 0.3, 0.2, 1.0 ]
 
 # trainer
 accelerator: auto
@@ -72,8 +68,25 @@ devices: auto # num_devices
 precision: bf16-mixed # bf16-mixed , 32-true
 gradient_clip_val: 0.5
 gradient_clip_algorithm: norm #value
-val_check_interval: 1000 # 0.25
+val_check_interval: 500 # 0.25
 
 save_top_k: 5
-save_every_steps: 1000
+save_every_steps: 500
 
+# 一般情况不改
+hubert_config:
+  encoder: cn_hubert
+  model_path: dependencies/chinese-hubert-base
+  sample_rate: 16000
+  hop_size: 320
+  channel: 768
+
+mel_spec_config:
+  n_mels: 128
+  sample_rate: 44100
+  window_size: 1024
+  hop_size: 512
+  n_fft: 2048
+  f_min: 40
+  f_max: 16000
+  clamp: 0.00001
