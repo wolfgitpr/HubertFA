@@ -10,11 +10,11 @@ def load_yaml(yaml_path):
     return config
 
 
-def check_configs(model_dir):
+def check_configs(model_dir, suffix='yaml'):
     model_dir = Path(model_dir)
-    vocab_file = model_dir / "vocab.yaml"
+    vocab_file = model_dir / f"vocab.{suffix}"
     assert os.path.exists(vocab_file), f"{vocab_file} does not exist"
-    config_file = model_dir / "config.yaml"
+    config_file = model_dir / f"config.{suffix}"
     assert os.path.exists(config_file), f"{config_file} does not exist"
 
     vocab = load_yaml(vocab_file)

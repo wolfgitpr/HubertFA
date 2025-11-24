@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 
@@ -10,8 +11,8 @@ from tqdm import tqdm
 
 import networks.g2p
 from tools.align_word import WordList, Word, Phoneme
-from tools.decoder import AlignmentDecoder
 from tools.config_utils import check_configs
+from tools.decoder import AlignmentDecoder, NonLexicalDecoder
 from tools.export_tool import Exporter
 from tools.post_processing import post_processing, find_all_duplicate_phonemes, remove_outliers_per_position
 
@@ -37,53 +38,56 @@ def create_session(onnx_path):
 @click.option("--onnx_folder", "-of", required=True, type=pathlib.Path, help="Path to ONNX models")
 @click.option("--folder", "-f", default="segments", type=str, help="Input folder path")
 @click.option("--g2p", "-g", default="Dictionary", type=str, help="G2P class name")
-@click.option("--non_speech_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
+@click.option("--non_lexical_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
 @click.option("--language", "-l", default="zh", help="Dictionary language")
 @click.option("--dictionary", "-d", type=pathlib.Path, help="Custom dictionary path")
 @click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
 @click.option("--pad_length", "-pl", type=int, default=5,
               help="The max length of blank audio on the pad before inference")
-def infer(onnx_folder, folder, g2p, non_speech_phonemes, language, dictionary, pad_times, pad_length):
+def infer(onnx_folder, folder, g2p, non_lexical_phonemes, language, dictionary, pad_times, pad_length):
     onnx_folder = pathlib.Path(onnx_folder)
-    check_configs(onnx_folder)
+    check_configs(onnx_folder, suffix='json')
     with open(onnx_folder / 'VERSION', 'r', encoding='utf-8') as f:
-        assert int(f.readline().strip()) >= 3, f"onnx model version must be greater than 3."
+        assert int(f.readline().strip()) == 5, f"onnx model version must be 5."
 
-    vocab = load_yaml(onnx_folder / "vocab.yaml")
-    non_speech_phonemes = [ph.strip() for ph in non_speech_phonemes.split(",") if ph.strip()]
+    with open(onnx_folder / 'vocab.json', 'r', encoding='utf-8') as f:
+        vocab = json.loads(f.read())
+    non_lexical_phonemes = [ph.strip() for ph in non_lexical_phonemes.split(",") if ph.strip()]
 
     if "Dictionary" in g2p:
         if dictionary is None:
             dictionary = onnx_folder / vocab["dictionaries"].get(language, "")
         assert os.path.exists(dictionary), f"{pathlib.Path(dictionary).absolute()} does not exist"
 
-    assert set(non_speech_phonemes).issubset(set(vocab['non_speech_phonemes'])), \
-        f"The non_speech_phonemes contain elements that are not included in the vocab."
+    assert set(non_lexical_phonemes).issubset(set(vocab['non_lexical_phonemes'])), \
+        f"The non_lexical_phonemes contain elements that are not included in the vocab."
 
     if not g2p.endswith("G2P"):
         g2p += "G2P"
     g2p_class = getattr(networks.g2p, g2p)
     grapheme_to_phoneme = g2p_class(
-        **{"language": language, "dictionary": dictionary, "non_speech_phonemes": non_speech_phonemes})
+        **{"language": language, "dictionary": dictionary, "non_lexical_phonemes": non_lexical_phonemes})
     dataset = grapheme_to_phoneme.get_dataset(pathlib.Path(folder).rglob("*.wav"))
 
-    config = load_yaml(onnx_folder / 'config.yaml')
-    vocab = load_yaml(onnx_folder / 'vocab.yaml')
-    language_prefix = vocab.get("language_prefix", True)
+    with open(onnx_folder / 'config.json', 'r', encoding='utf-8') as f:
+        config = json.loads(f.read())
+    language_prefix = vocab['language_prefix']
     mel_cfg = config['melspec_config']
 
     # Create ONNX sessions
     model = create_session(onnx_folder / 'model.onnx')
 
     # Process dataset
-    decoder = AlignmentDecoder(vocab, ["None", *non_speech_phonemes], mel_cfg["sample_rate"], mel_cfg["hop_size"])
+    nll_decoder = NonLexicalDecoder(vocab=vocab, class_names=['None', *vocab['non_lexical_phonemes']],
+                                    sample_rate=mel_cfg["sample_rate"], hop_size=mel_cfg["hop_size"])
+    fa_decoder = AlignmentDecoder(vocab=vocab, sample_rate=mel_cfg["sample_rate"], hop_size=mel_cfg["hop_size"])
     predictions = []
-    ignored_phonemes = vocab['silent_phonemes'] + vocab['non_speech_phonemes']
+    ignored_phonemes = vocab['silent_phonemes'] + vocab['non_lexical_phonemes']
 
     pad_lengths = [round(pad_length / pad_times * i, 1) for i in range(0, pad_times)] if pad_times > 1 else [0]
 
     for i in tqdm(range(len(dataset)), desc="Processing", unit="it"):
-        wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_speech_phonemes = dataset[i]
+        wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_lexical_phonemes = dataset[i]
         ph_seq = [f"{language}/{ph}" if ph not in ignored_phonemes and language_prefix else ph for ph in ph_seq]
 
         # Load and resample audio
@@ -97,13 +101,20 @@ def infer(onnx_folder, folder, g2p, non_speech_phonemes, language, dictionary, p
             padded_wav = np.pad(wav, (padded_samples, 0), mode='constant', constant_values=0)
 
             results = run_onnx(model, {'waveform': [padded_wav]})
-            words, _ = decoder.decode(
-                results['ph_frame_logits'][:, padded_frames + 1:, :],
-                results['ph_edge_logits'][:, padded_frames + 1:],
-                results['cvnt_logits'][:, :, padded_frames + 1:],
-                wav_length, ph_seq, word_seq, ph_idx_to_word_idx,
-                non_speech_phonemes=non_speech_phonemes
+
+            words, _ = fa_decoder.decode(
+                ph_frame_logits=results['ph_frame_logits'][:, padded_frames + 1:, :],
+                ph_edge_logits=results['ph_edge_logits'][:, padded_frames + 1:],
+                wav_length=wav_length, ph_seq=ph_seq, word_seq=word_seq, ph_idx_to_word_idx=ph_idx_to_word_idx
             )
+
+            non_lexical_words = nll_decoder.decode(cvnt_logits=results['cvnt_logits'][:, :, padded_frames + 1:],
+                                                   wav_length=wav_length,
+                                                   non_lexical_phonemes=non_lexical_phonemes)
+            for _words in non_lexical_words:
+                for word in _words:
+                    if word.text in ['AP', 'EP']:
+                        words.add_AP(word)
             words.clear_language_prefix()
             words_list.append(words)
 

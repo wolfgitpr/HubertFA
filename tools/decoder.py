@@ -108,7 +108,7 @@ class AlignmentDecoder:
         for i, ph_idx in enumerate(ph_idx_seq):
             ph_seq_decoded.append(ph_seq[ph_idx])
             # ph_idx只能用于两种情况：ph_seq和ph_idx_to_word_idx
-            if ph_seq[ph_idx] == "SP" and ignore_sp:
+            if ph_seq[ph_idx] == 'SP' and ignore_sp:
                 continue
             phoneme = Phoneme(ph_intervals[i, 0], ph_intervals[i, 1], ph_seq[ph_idx])
 
@@ -288,16 +288,13 @@ class NonLexicalDecoder:
 
     def decode(self,
                cvnt_logits,
-               lexical_mask=None,
                wav_length: float | None = None,
                non_lexical_phonemes: list[str] = None,
-               ):
+               ) -> list[WordList]:
         non_lexical_phonemes = non_lexical_phonemes or []
         if wav_length is not None:
             num_frames = int((wav_length * self.sample_rate + 0.5) / self.hop_size)
             cvnt_logits = cvnt_logits[:, :, :num_frames]
-        if lexical_mask is not None:
-            cvnt_logits[:, 1:, lexical_mask] = 0
         self.cvnt_probs = softmax(cvnt_logits, axis=1)[0]
 
         words = WordList()
@@ -307,6 +304,7 @@ class NonLexicalDecoder:
             tag_words: list[Word] = self.non_lexical_words(self.cvnt_probs[i], tag=ph)
             for tag_word in tag_words:
                 words.add_AP(tag_word)
+            non_lexical_words.append(words)
         return non_lexical_words
 
     def plot(self, mel_spec):
