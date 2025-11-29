@@ -51,9 +51,11 @@ class UnitsEncoder(torch.nn.Module):
         if audio_resample.size(-1) < 400:
             audio_resample = torch.nn.functional.pad(audio, (0, 400 - audio_resample.size(-1)))  # [B, T]
 
-        if aug and aug_args['random_pitch_shifting']['enabled']:
+        units = self.model(audio_resample)  # [B, T, C]
+
+        if aug and aug_args['random_pitch_shifting']['num'] > 0:
             key_shift_min, key_shift_max = aug_args['random_pitch_shifting']['range']
-            audio_versions = [audio_resample]
+            units_versions = [units]
             for _ in range(aug_args['random_pitch_shifting']['num']):
                 rand = random.uniform(-1, 1)
                 key_shift = key_shift_min * abs(rand) if rand < 0 else key_shift_max * rand
@@ -61,29 +63,23 @@ class UnitsEncoder(torch.nn.Module):
                                                                   key_shift)
                 if pitch_shifted.dim() == 1:
                     pitch_shifted = pitch_shifted.unsqueeze(0)
-                audio_versions.append(pitch_shifted)
-            audio_resample = torch.cat(audio_versions, dim=0)
+                units_versions.append(self.model(pitch_shifted))
+            units = torch.cat(units_versions, dim=0)
 
-        units = self.model(audio_resample)  # [B, T, C]
-
-        if aug and aug_args['blank_padding']['enabled']:
+        if aug and aug_args['blank_padding']['num'] > 0:
             padding_min, padding_max = aug_args['blank_padding']['range']
             audio_length = len(audio_resample[0])
-            audio_padding = torch.zeros(
-                (aug_args['blank_padding']['num'], audio_length + padding_max * self.encoder_sample_rate),
-                device=self.device)
-            padding_lengths = []
-            for i in range(aug_args['blank_padding']['num']):
-                padding_samples = random.randint(padding_min, padding_max) * self.encoder_sample_rate
-                padding_lengths.append(padding_samples)
-                audio_padding[i, padding_samples:audio_length + padding_samples] = audio_resample[0]
-
-            units_padding = self.model(audio_padding)
 
             units_versions = [units]
-            for i in range(len(units_padding)):
-                padding_frames = int(padding_lengths[i] / self.encoder_hop_size)
-                units_versions.append(units_padding[i:i + 1, padding_frames:padding_frames + len(units[0])])
+            for _ in range(aug_args['blank_padding']['num']):
+                padding_samples = random.randint(padding_min, padding_max) * self.encoder_sample_rate
+                audio_padding = torch.zeros((1, audio_length + padding_max * self.encoder_sample_rate),
+                                            device=self.device)
+                audio_padding[0, padding_samples:audio_length + padding_samples] = audio_resample[0]
+
+                units_padding = self.model(audio_padding)
+                padding_frames = int(padding_samples / self.encoder_hop_size)
+                units_versions.append(units_padding[:, padding_frames:padding_frames + len(units[0]), :])
             units = torch.cat(units_versions, dim=0)
 
         # alignment

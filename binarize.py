@@ -43,13 +43,7 @@ class BaseBinarizer(object):
         self.max_length = self.binary_config['max_length']
 
         self.aug_args: dict = self.binary_config['augmentation_args']
-        self.aug_num: int = (
-                1 + (
-            self.aug_args['random_pitch_shifting']['num'] if self.aug_args['random_pitch_shifting'][
-                'enabled'] else 0) +
-                (self.aug_args['blank_padding']['num'] if self.aug_args['blank_padding'][
-                    'enabled'] else 0)
-        )
+        self.aug_num: int = 1 + self.aug_args['random_pitch_shifting']['num'] + self.aug_args['blank_padding']['num']
 
         shutil.copy(binary_config_path, self.binary_folder / 'config.yaml')
         self.export_config(self.binary_folder / 'datasets.yaml',
@@ -235,7 +229,7 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
                 if ph_id > 0:
                     non_lexical_intervals.append([start_frame, end_frame])
 
-        return non_lexical_target, non_lexical_intervals
+        return non_lexical_target, np.array(non_lexical_intervals)
 
     @torch.no_grad()
     def process_item(self, _item, train):
@@ -260,23 +254,20 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
                 print(f"Skipping {wav_path}, make non_lexical_ph data failed.")
                 return None
 
-            non_lexical_target = np.array([non_lexical_target])
-            non_lexical_intervals = np.array([non_lexical_intervals])
-
-            units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
-                                              self.hop_size, aug=True,
+            units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size,
+                                              aug=self.binary_config['augmentation_args']['enabled'] and train,
                                               aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
-            mel_spec = self.get_mel_spec(waveform) if not train else None  # [B, C, T]
+            mel_spec = self.get_mel_spec(waveform).cpu().numpy() if not train else np.array([[[0]]])  # [B, C, T]
             B, T, C = units.shape
 
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
 
             return {
-                'name': str(_item["name"]),
+                'name': [str(_item["name"])] * B,
                 'input_feature': units.cpu().numpy().astype("float32"),  # [B, T, C]
-                'mel_spec': mel_spec.cpu().numpy().astype("float32") if not train else np.array([0]),  # (1,C,T)
-                "non_lexical_target": non_lexical_target.astype("int32"),  # (B,N,T)
-                "non_lexical_intervals": non_lexical_intervals.astype("int32"),  # (B,N,2)
+                'mel_spec': np.repeat(mel_spec, B, axis=0).astype("float32"),  # (1,C,T)
+                "non_lexical_target": np.repeat(non_lexical_target[np.newaxis, :], B, axis=0).astype("int32"),
+                "non_lexical_intervals": np.repeat(non_lexical_intervals[np.newaxis, :], B, axis=0).astype("int32"),
                 "wav_length": wav_length
             }
 
@@ -480,7 +471,7 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
                 npy_loaded = True if units.shape[1] > 0 else False
             if not npy_loaded:
                 units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
-                                                  self.hop_size, aug=True,
+                                                  self.hop_size, aug=self.binary_config['augmentation_args']['enabled'],
                                                   aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
             mel_spec = self.get_mel_spec(waveform) if not train else None  # [B, C, T]
 

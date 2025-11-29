@@ -83,7 +83,7 @@ class NonLexicalLabelerDataset(BaseDataset):
         if self.h5py_file is None:
             self._open_h5py_file()
         item = self.h5py_file["items"][str(index)]
-        name = item["name"][()].decode('utf-8')
+        name = [name.decode('utf-8') for name in item["name"]]
         input_feature = np.array(item["input_feature"])  # [1,256,T]
         mel_spec = np.array(item["mel_spec"])
         non_lexical_target = np.array(item["non_lexical_target"])
@@ -251,13 +251,12 @@ def non_lexical_labeler_collate_fn(batch):
             pad_2d(item[3], max_len),  # non_lexical_target
             item[4],  # non_lexical_interval
         ))
-    repeat_num = len(padded_batch[0][2])
     return (
         [x[0] for x in padded_batch],  # names
         torch.cat([x[1] for x in padded_batch], dim=0),  # mel_specs (B, C_mel, T)
         torch.cat([x[2] for x in padded_batch], dim=0),  # input_features (B, T, C)
-        input_feature_lengths.repeat(repeat_num),
-        torch.cat([x[3] for x in padded_batch], dim=0).repeat(repeat_num, 1, 1),  # non_lexical_target (B, N, T)
+        input_feature_lengths,
+        torch.cat([x[3] for x in padded_batch], dim=0),  # non_lexical_target (B, N, T)
         [x[4] for x in padded_batch],  # non_lexical_intervals (B, N, T)
     )
 
