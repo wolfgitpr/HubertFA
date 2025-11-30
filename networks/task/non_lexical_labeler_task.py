@@ -80,12 +80,16 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
     def make_non_lexical_mask(self, shape, non_lexical_intervals):
         B, T, C = shape
         non_lexical_mask = torch.zeros((B, T, 1), dtype=torch.bool, device=self.device)
+        _non_lexical_intervals = []
+        for item in non_lexical_intervals:
+            for i in range(len(item)):
+                _non_lexical_intervals.append(item[i])
 
         if self.non_lexical_mask_ratio > 0:
             mask_idxes = random.choices(range(B), k=int(B * self.non_lexical_mask_ratio))
 
             for mask_idx in mask_idxes:
-                non_lexical_interval = non_lexical_intervals[mask_idx]
+                non_lexical_interval = _non_lexical_intervals[mask_idx]
                 if len(non_lexical_interval) > 0:
                     non_lexical_idx = random.choices(range(len(non_lexical_interval)),
                                                      k=int(len(non_lexical_interval) * self.non_lexical_mask_ratio))
@@ -194,12 +198,14 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
     def _get_loss(
             self,
             cvnt_logits,  # [B, N, T]
-            non_lexical_target
+            non_lexical_target,
+            valid=False,
     ):
         target_indices = torch.argmax(non_lexical_target, dim=1)
         ce_loss, focal_loss = self.cross_entropy_and_focal_loss(cvnt_logits, target_indices)
         dice_loss = self.dice_loss(cvnt_logits, target_indices)
-        consistency_loss = self._get_consistency_loss(cvnt_logits)
+        consistency_loss = self._get_consistency_loss(cvnt_logits) if not valid else torch.tensor(0.0,
+                                                                                                  device=self.device)
 
         losses = [
             ce_loss,
@@ -291,7 +297,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         )
 
         if dataloader_idx == 0:
-            losses = self._get_loss(cvnt_logits, non_lexical_target)
+            losses = self._get_loss(cvnt_logits, non_lexical_target, valid=True)
             total_loss = (torch.stack(losses) * self.losses_weights).sum()
             losses.append(total_loss)
             losses = torch.stack(losses)
