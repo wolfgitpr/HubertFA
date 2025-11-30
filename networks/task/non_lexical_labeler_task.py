@@ -8,8 +8,8 @@ import torch.optim.lr_scheduler as lr_scheduler_module
 
 from networks.layer.backbone.cvnt import CVNT
 from networks.optimizer.muon import Muon_AdamW
-from tools.decoder import NonLexicalDecoder
 from tools.binarize_util import load_wav
+from tools.decoder import NonLexicalDecoder
 from tools.get_melspec import MelSpecExtractor
 
 
@@ -21,6 +21,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
+        self.validation_error_rates = []
 
         self.vocab: dict = vocab
         self.config: dict = config
@@ -296,6 +297,20 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
             non_lexical_phonemes=self.non_lexical_phonemes
         )
 
+        with torch.no_grad():
+            probs = torch.softmax(cvnt_logits, dim=1)  # [B, N, T]
+            pred_classes = torch.argmax(probs, dim=1)  # [B, T]
+            target_indices = torch.argmax(non_lexical_target, dim=1)  # [B, T]
+
+            max_probs, _ = torch.max(probs, dim=1)  # [B, T]
+            correct_frames = ((pred_classes == target_indices) & (max_probs > 0.65)).float()
+
+            batch_error_rates = 1 - correct_frames.mean(dim=1)  # [B]
+            frame_error_rate = batch_error_rates.mean()
+
+        prefix = "unseen_evaluate" if dataloader_idx > 0 else "valid_evaluate"
+        self.log(f"{prefix}/frame_error_rate", frame_error_rate, add_dataloader_idx=False)
+
         if dataloader_idx == 0:
             losses = self._get_loss(cvnt_logits, non_lexical_target, valid=True)
             total_loss = (torch.stack(losses) * self.losses_weights).sum()
@@ -306,7 +321,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))
                 and batch_idx < self.config.get("num_valid_plots", 20)):
             fig = self.decoder.plot(mel_spec.cpu().numpy())
-            self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0]}", fig,
+            self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0][0]}", fig,
                                               self.global_step)
 
     def on_validation_epoch_end(self):

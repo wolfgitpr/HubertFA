@@ -1,8 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-plt.rcParams['font.sans-serif'] = ['SimSun']
-
 
 def plot_force_alignment_prob(melspec,
                               ph_seq,
@@ -12,12 +10,9 @@ def plot_force_alignment_prob(melspec,
                               ph_frame_prob,
                               ph_frame_id_gt,
                               ph_time_gt=None,
-                              v_min=-8, v_max=2, title=None
+                              v_min=-8, v_max=2
                               ):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
-
-    if title:
-        fig.suptitle(title, fontsize=14)
 
     ph_seq = [i.split("/")[-1] for i in ph_seq]
     T = melspec.shape[-1]
@@ -106,13 +101,10 @@ def plot_force_alignment_prob(melspec,
 
 def plot_non_lexical_phonemes(mel_spec,  # [C,T]
                               cvnt_prob,
-                              label=None, v_min=-8, v_max=2, title=None,
+                              label=None, v_min=-8, v_max=2,
                               bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
     label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
-
-    if title:
-        fig.suptitle(title, fontsize=14)
 
     if mel_spec.ndim == 3:
         mel_spec = mel_spec.squeeze(0)

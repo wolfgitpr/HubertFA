@@ -1,4 +1,4 @@
-model_name: 1118_nll_aug_1
+model_name: 1118_nll_aug_2
 
 float32_matmul_precision: high
 random_seed: 123456
@@ -30,7 +30,7 @@ num_valid_plots: 20 # val、evaluate各项最大绘制数量
 draw_evaluate: True # 绘制evaluate
 
 augmentation_args: # 数据增强，预处理阶段生效
-  enabled: true
+  enabled: false
   random_pitch_shifting:
     range: [ -5., 5. ]
     num: 0

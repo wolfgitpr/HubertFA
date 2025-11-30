@@ -43,7 +43,10 @@ class BaseBinarizer(object):
         self.max_length = self.binary_config['max_length']
 
         self.aug_args: dict = self.binary_config['augmentation_args']
-        self.aug_num: int = 1 + self.aug_args['random_pitch_shifting']['num'] + self.aug_args['blank_padding']['num']
+        self.aug_num: int = 1 + (
+            (self.aug_args['random_pitch_shifting']['num'] + self.aug_args['blank_padding']['num'] if self.aug_args[
+                'enabled'] else 0)
+        )
 
         shutil.copy(binary_config_path, self.binary_folder / 'config.yaml')
         self.export_config(self.binary_folder / 'datasets.yaml',
@@ -260,6 +263,8 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
             mel_spec = self.get_mel_spec(waveform).cpu().numpy() if not train else np.array([[[0]]])  # [B, C, T]
             B, T, C = units.shape
 
+            assert B == (
+                self.aug_num if train else 1), f"Batch of input_feature must be equal to aug_num - {self.aug_num}."
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
 
             return {
@@ -516,8 +521,7 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
 
 
 @click.command()
-@click.option("--config", "-c", type=str, default="configs/binarize_config.yaml", show_default=True,
-              help="binarize config path")
+@click.option("--config", "-c", type=str, required=True, help="binarize config path")
 @click.option("--model", "-m", type=str, required=True,
               help="model type: nll[non_lexical_labeler model, first step] fa[forced_alignment model, second step]")
 def binarize(config: str, model: str):

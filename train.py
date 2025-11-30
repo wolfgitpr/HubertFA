@@ -140,7 +140,7 @@ class NonLexicalLabelerTrainer(BaseTrainer):
 
         self.evaluate_checkpoint = MonitorCheckpointsCallback(
             dirpath=self.save_model_folder,
-            monitor="train_loss/total_loss",
+            monitor="unseen_evaluate/frame_error_rate",
             mode="min",
             save_top_k=5,
         )
@@ -170,8 +170,7 @@ class ForcedAlignmentTrainer(BaseTrainer):
 
 
 @click.command()
-@click.option("--config", "-c", type=str, default="configs/train_config.yaml", show_default=True,
-              help="training config path")
+@click.option("--config", "-c", type=str, required=True, help="training config path")
 @click.option("--model", "-m", type=str, required=True,
               help="model type: nll[non_lexical_labeler model, first step] fa[forced_alignment model, second step]")
 @click.option("--resume", "-r", is_flag=True, default=False, show_default=True,
