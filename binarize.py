@@ -165,6 +165,23 @@ class BaseBinarizer(object):
             assert csv_path.exists() and wav_folder.exists(), f"{csv_path.absolute()} or {wav_folder.absolute()} does not exist."
 
             df = pd.read_csv(csv_path, dtype=str)
+            original_count = len(df)
+
+            df['name'] = df['name'].astype(str)
+            invalid_names = df['name'].apply(lambda x: not isinstance(x, str) or x == 'nan' or x.strip() == '')
+
+            if invalid_names.any():
+                invalid_count = invalid_names.sum()
+                print(f"Warning: Found {invalid_count} invalid name(s) in {csv_path}. Removing these rows.")
+                print(f"Invalid names: {df[invalid_names]['name'].tolist()}")
+
+                df = df[~invalid_names].copy()
+                print(f"Removed {invalid_count} invalid rows. Remaining: {len(df)}/{original_count}")
+
+            if len(df) == 0:
+                print(f"Error: No valid data remaining in {csv_path} after cleaning!")
+                continue
+
             assert "ph_seq" in df.columns, f"{csv_path.absolute()} does not contain 'ph_seq'."
             assert "ph_dur" in df.columns, f"full label csv: {csv_path.absolute()} does not contain 'ph_dur'."
 
@@ -183,6 +200,8 @@ class BaseBinarizer(object):
         )
         meta_data_df.reset_index(drop=True, inplace=True)
         meta_data_df = meta_data_df.sort_values(by="label_type").reset_index(drop=True)
+
+        print(f"Final metadata contains {len(meta_data_df)} valid rows.")
         return meta_data_df
 
     def post_process_meta_data(self, meta_data_df) -> pd.DataFrame:
@@ -262,7 +281,6 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
                                               aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
             mel_spec = self.get_mel_spec(waveform).cpu().numpy() if not train else np.array([[[0]]])  # [B, C, T]
             B, T, C = units.shape
-
             assert B == (
                 self.aug_num if train else 1), f"Batch of input_feature must be equal to aug_num - {self.aug_num}."
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
@@ -475,28 +493,30 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
                 units = torch.as_tensor(np.load(npy_path))
                 npy_loaded = True if units.shape[1] > 0 else False
             if not npy_loaded:
-                units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate,
-                                                  self.hop_size, aug=self.binary_config['augmentation_args']['enabled'],
+                units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size,
+                                                  aug=self.binary_config['augmentation_args']['enabled'] and train,
                                                   aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
-            mel_spec = self.get_mel_spec(waveform) if not train else None  # [B, C, T]
+            mel_spec = self.get_mel_spec(waveform).cpu().numpy() if not train else np.array([[[0]]])  # [B, C, T]
 
             B, T, C = units.shape
+            assert B == (
+                self.aug_num if train else 1), f"Batch of input_feature must be equal to aug_num - {self.aug_num}."
             assert T > 0 and T == n_frames, f"Length of unit {T} must be greater than 0."
             assert C == self.hubert_channel, f"Item {wav_path} has unexpected channel of {C}, which should be {self.hubert_channel}."
 
             return {
-                'name': str(_item["name"]),
+                'name': [str(_item["name"])] * B,
                 'input_feature': units.cpu().numpy().astype("float32"),  # (B,T,C)
-                'curves': curves.cpu().numpy().astype("float32"),  # (B,1,C)
-                'mel_spec': mel_spec.cpu().numpy().astype("float32") if not train else np.array([0]),  # (1,C,T)
-                'ph_id_seq': ph_id_seq.astype("int32"),  # (N,)
-                'ph_edge': ph_edge.astype("float32"),  # (T,)
-                'ph_frame': ph_frame.astype("int32"),  # (T,)
-                'ph_mask': ph_mask.astype("int32"),  # (X,)
-                'ph_time': ph_time.astype("float32"),  # (N,)
+                'curves': np.repeat(curves.cpu().numpy(), B, axis=0).astype("float32"),  # (B,1,C)
+                'mel_spec': np.repeat(mel_spec, B, axis=0).astype("float32"),  # (1,C,T)
+                'ph_id_seq': np.repeat([ph_id_seq], B, axis=0).astype("int32"),  # (N,)
+                'ph_edge': np.repeat([ph_edge], B, axis=0).astype("float32"),  # (T,)
+                'ph_frame': np.repeat([ph_frame], B, axis=0).astype("int32"),  # (T,)
+                'ph_mask': np.repeat([ph_mask], B, axis=0).astype("int32"),  # (X,)
+                'ph_time': np.repeat([ph_time], B, axis=0).astype("float32"),  # (N,)
                 'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
                 'ph_seq_raw': _item.ph_seq,
-                'ph_seq': [ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0],
+                'ph_seq': [[ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0]] * B,
                 "wav_length": wav_length
             }
 

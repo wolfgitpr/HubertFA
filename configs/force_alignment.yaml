@@ -1,4 +1,4 @@
-model_name: 1118_fa_base
+model_name: 1118_fa_aug
 
 float32_matmul_precision: high
 random_seed: 123456
@@ -47,12 +47,11 @@ num_valid_plots: 20 # val、evaluate各项最大绘制数量
 draw_evaluate: True # 绘制evaluate
 
 augmentation_args: # 数据增强，预处理阶段生效
+  enabled: true
   random_pitch_shifting:
-    enabled: false
     range: [ -5., 5. ]
-    num: 1
+    num: 0
   blank_padding:
-    enabled: false
     range: [ 0, 5 ] # seconds
     num: 1
 

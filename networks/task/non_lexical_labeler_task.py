@@ -57,7 +57,8 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
 
         # loss function
         self.MSE_loss_fn = nn.MSELoss()
-        self.decoder = NonLexicalDecoder(self.vocab, self.class_names, self.sample_rate, self.hop_size)
+        self.decoder: NonLexicalDecoder = NonLexicalDecoder(self.vocab, self.class_names, self.sample_rate,
+                                                            self.hop_size)
 
         # validation_step_outputs
         self.validation_step_outputs = {"losses": [], "tiers-0": [], "tiers-1": []}
@@ -82,9 +83,6 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         B, T, C = shape
         non_lexical_mask = torch.zeros((B, T, 1), dtype=torch.bool, device=self.device)
         _non_lexical_intervals = []
-        for item in non_lexical_intervals:
-            for i in range(len(item)):
-                _non_lexical_intervals.append(item[i])
 
         if self.non_lexical_mask_ratio > 0:
             mask_idxes = random.choices(range(B), k=int(B * self.non_lexical_mask_ratio))
@@ -119,7 +117,6 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
             non_lexical_phonemes=non_lexical_phonemes
         )
 
-        words.clear_language_prefix()
         return wav_path, wav_length, words
 
     def cross_entropy_and_focal_loss(self, logits, targets):

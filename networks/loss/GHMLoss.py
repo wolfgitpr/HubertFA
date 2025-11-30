@@ -78,17 +78,22 @@ class BCEGHMLoss(nn.Module):
 
 
 class MultiLabelGHMLoss(nn.Module):
-    def __init__(self, num_classes, num_bins=10, alpha=0.999, label_smoothing=0.0):
+    def __init__(self, num_classes: int, num_bins: int = 10, alpha: float = 0.999, label_smoothing: float = 0.0):
         super().__init__()
-        self.loss_fn = nn.BCEWithLogitsLoss(reduction="none")
-        self.num_bins = num_bins
-        self.register_buffer("GD_stat_ema", torch.ones(num_bins))
-        self.register_buffer("label_stat_ema_each_class", torch.ones(num_classes * 3))
-        self.num_classes = num_classes
+
         self.alpha = alpha
+        self.num_bins = num_bins
+        self.num_classes = num_classes
         self.label_smoothing = label_smoothing
 
-    def forward(self, pred_logits, target_prob, mask=None, valid=False):
+        self.register_buffer("GD_stat_ema", torch.ones(num_bins))
+        self.register_buffer("label_stat_ema_each_class", torch.ones(num_classes * 3))
+
+        self.loss_fn = nn.BCEWithLogitsLoss(reduction="none")
+
+    def forward(self, pred_logits,  # [1,T,1]
+                target_prob,  # [1,T,1]
+                mask=None, valid=False):
         if pred_logits.size(0) == 0:
             return torch.tensor(0.0, device=pred_logits.device)
 
@@ -123,13 +128,18 @@ class MultiLabelGHMLoss(nn.Module):
 
 
 class GHMLoss(torch.nn.Module):
-    def __init__(self, num_classes, num_bins=10, alpha=1 - 1e-6, label_smoothing=0.0):
+    def __init__(self, num_classes: int, num_bins: int = 10, alpha: float = 1 - 1e-6, label_smoothing: float = 0.0):
         super().__init__()
-        self.num_classes = num_classes
-        self.register_buffer("class_ema", torch.ones(num_classes))
-        self.num_bins = num_bins
-        self.register_buffer("GD_ema", torch.ones(num_bins))
+        self.GD_ema = None
+        self.class_ema = None
+
         self.alpha = alpha
+        self.num_bins = num_bins
+        self.num_classes = num_classes
+
+        self.register_buffer("GD_ema", torch.ones(num_bins))
+        self.register_buffer("class_ema", torch.ones(num_classes))
+
         self.loss_fn = nn.CrossEntropyLoss(reduction="none")
         self.label_smoothing = label_smoothing
 
@@ -209,6 +219,6 @@ class GHMLoss(torch.nn.Module):
 if __name__ == "__main__":
     torch.manual_seed(42)
     loss_fn = MultiLabelGHMLoss(10, alpha=0.9)
-    input = torch.sigmoid(torch.randn(3, 3, 10) * 10)
+    _input = torch.sigmoid(torch.randn(3, 3, 10) * 10)
     target = (torch.randn(3, 3, 10) > 0).float()
-    print(loss_fn(input, target))
+    print(loss_fn(_input, target))

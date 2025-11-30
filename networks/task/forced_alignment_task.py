@@ -92,21 +92,21 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         # loss function
         self.ph_frame_GHM_loss_fn = GHMLoss(
-            self.vocab["vocab_size"],
-            self.loss_config["function"]["num_bins"],
-            self.loss_config["function"]["alpha"],
-            self.loss_config["function"]["label_smoothing"],
+            num_classes=self.vocab["vocab_size"],
+            num_bins=self.loss_config["function"]["num_bins"],
+            alpha=self.loss_config["function"]["alpha"],
+            label_smoothing=self.loss_config["function"]["label_smoothing"],
         )
         self.ph_edge_GHM_loss_fn = MultiLabelGHMLoss(
-            1,
-            self.loss_config["function"]["num_bins"],
-            self.loss_config["function"]["alpha"],
+            num_classes=1,
+            num_bins=self.loss_config["function"]["num_bins"],
+            alpha=self.loss_config["function"]["alpha"],
             label_smoothing=0.0,
         )
         self.ph_edge_diff_GHM_loss_fn = MultiLabelGHMLoss(
-            1,
-            self.loss_config["function"]["num_bins"],
-            self.loss_config["function"]["alpha"],
+            num_classes=1,
+            num_bins=self.loss_config["function"]["num_bins"],
+            alpha=self.loss_config["function"]["alpha"],
             label_smoothing=0.0,
         )
 
@@ -176,9 +176,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def _get_consistency_loss(
             self,
-            ph_frame_logits,  # [B,T,C]
+            ph_frame_logits,  # [B,T,vocab_size]
             ph_edge_logits,  # [B,T]
-            input_feature_lengths
     ):
         def compute_consistency_for_frame_logits(logits):
             B, T, C = logits.shape
@@ -309,9 +308,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             valid
         )
 
-        consistency_loss = self._get_consistency_loss(
-            ph_frame_logits, ph_edge_logits, input_feature_lengths
-        )
+        consistency_loss = self._get_consistency_loss(ph_frame_logits, ph_edge_logits) if not valid \
+            else torch.tensor(0.0, device=self.device)
 
         losses = [
             ph_frame_GHM_loss,
@@ -338,66 +336,62 @@ class LitForcedAlignmentTask(pl.LightningModule):
         return ph_frame_logits, ph_edge_logits, ctc_logits
 
     def training_step(self, batch, batch_idx):
-        try:
-            (
-                input_feature,  # (B, n_mels, T)
-                input_feature_lengths,  # (B)
-                ph_seq,  # (B S)
-                ph_id_seq,  # (B S)
-                ph_seq_lengths,  # (B)
-                ph_edge,  # (B, T)
-                ph_frame,  # (B, T)
-                ph_mask,  # (B vocab_size)
-                melspec,
-                ph_time,
-                name,
-                ph_seq_raw,
-                ph_time_raw,
-                curves,  # [B, T, 2]
-            ) = batch
+        (
+            input_feature,  # (B, n_mels, T)
+            input_feature_lengths,  # (B)
+            ph_seq,  # (B S)
+            ph_id_seq,  # (B S)
+            ph_seq_lengths,  # (B)
+            ph_edge,  # (B, T)
+            ph_frame,  # (B, T)
+            ph_mask,  # (B vocab_size)
+            melspec,
+            ph_time,
+            name,
+            ph_seq_raw,
+            ph_time_raw,
+            curves,  # [B, T, 2]
+        ) = batch
 
-            (
-                ph_frame_logits,  # (B, T, vocab_size)
-                ph_edge_logits,  # (B, T)
-                ctc_logits,  # (B, T, vocab_size)
-            ) = self.forward(input_feature, curves)
+        (
+            ph_frame_logits,  # (B, T, vocab_size)
+            ph_edge_logits,  # (B, T)
+            ctc_logits,  # (B, T, vocab_size)
+        ) = self.forward(input_feature, curves)
 
-            losses = self._get_loss(
-                ph_frame_logits,
-                ph_edge_logits,
-                ctc_logits,
-                ph_frame,
-                ph_edge,
-                ph_id_seq,
-                ph_seq_lengths,
-                ph_mask,
-                input_feature_lengths,
-                valid=False
-            )
+        losses = self._get_loss(
+            ph_frame_logits,
+            ph_edge_logits,
+            ctc_logits,
+            ph_frame,
+            ph_edge,
+            ph_id_seq,
+            ph_seq_lengths,
+            ph_mask,
+            input_feature_lengths,
+            valid=False
+        )
 
-            schedule_weight = self._losses_schedulers_call()
-            self._losses_schedulers_step()
-            total_loss = (torch.stack(losses) * self.losses_weights * schedule_weight).sum()
-            losses.append(total_loss)
+        schedule_weight = self._losses_schedulers_call()
+        self._losses_schedulers_step()
+        total_loss = (torch.stack(losses) * self.losses_weights * schedule_weight).sum()
+        losses.append(total_loss)
 
-            log_dict = {
-                f"train_loss/{k}": v
-                for k, v in zip(self.losses_names, losses)
-                if v != 0
+        log_dict = {
+            f"train_loss/{k}": v
+            for k, v in zip(self.losses_names, losses)
+            if v != 0
+        }
+        log_dict["scheduler/lr"] = self.trainer.optimizers[0].param_groups[0]["lr"]
+        log_dict.update(
+            {
+                f"scheduler/{k}": v
+                for k, v in zip(self.losses_names, schedule_weight)
+                if v != 1
             }
-            log_dict["scheduler/lr"] = self.trainer.optimizers[0].param_groups[0]["lr"]
-            log_dict.update(
-                {
-                    f"scheduler/{k}": v
-                    for k, v in zip(self.losses_names, schedule_weight)
-                    if v != 1
-                }
-            )
-            self.log_dict(log_dict)
-            return total_loss
-        except Exception as e:
-            print(f"Error: {e}. skip this batch.")
-            return torch.tensor(torch.nan).to(self.device)
+        )
+        self.log_dict(log_dict)
+        return total_loss
 
     def _get_evaluate_loss(self, tiers):
         metrics = {
