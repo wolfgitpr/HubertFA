@@ -1,4 +1,4 @@
-model_name: 1118_nll_aug_2
+model_name: 1201_nll
 
 float32_matmul_precision: high
 random_seed: 123456
@@ -22,8 +22,8 @@ multiprocess_start_size: 100  # 最小启动数据量
 # 训练数据加载进程数
 dataloader_workers: 2
 dataloader_prefetch_factor: 2
-batch_max_length: 100
-binning_length: 500
+batch_max_length: 200
+binning_length: 1000
 drop_last: False
 
 num_valid_plots: 20 # val、evaluate各项最大绘制数量
@@ -67,10 +67,10 @@ devices: auto # num_devices
 precision: bf16-mixed # bf16-mixed , 32-true
 gradient_clip_val: 0.5
 gradient_clip_algorithm: norm #value
-val_check_interval: 500 # 0.25
+val_check_interval: 1000 # 0.25
 
 save_top_k: 5
-save_every_steps: 500
+save_every_steps: 1000
 
 # 一般情况不改
 hubert_config:

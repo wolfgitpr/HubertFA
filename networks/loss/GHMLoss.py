@@ -130,9 +130,6 @@ class MultiLabelGHMLoss(nn.Module):
 class GHMLoss(torch.nn.Module):
     def __init__(self, num_classes: int, num_bins: int = 10, alpha: float = 1 - 1e-6, label_smoothing: float = 0.0):
         super().__init__()
-        self.GD_ema = None
-        self.class_ema = None
-
         self.alpha = alpha
         self.num_bins = num_bins
         self.num_classes = num_classes

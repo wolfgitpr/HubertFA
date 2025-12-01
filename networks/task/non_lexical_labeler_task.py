@@ -82,13 +82,12 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
     def make_non_lexical_mask(self, shape, non_lexical_intervals):
         B, T, C = shape
         non_lexical_mask = torch.zeros((B, T, 1), dtype=torch.bool, device=self.device)
-        _non_lexical_intervals = []
 
         if self.non_lexical_mask_ratio > 0:
             mask_idxes = random.choices(range(B), k=int(B * self.non_lexical_mask_ratio))
 
             for mask_idx in mask_idxes:
-                non_lexical_interval = _non_lexical_intervals[mask_idx]
+                non_lexical_interval = non_lexical_intervals[mask_idx]
                 if len(non_lexical_interval) > 0:
                     non_lexical_idx = random.choices(range(len(non_lexical_interval)),
                                                      k=int(len(non_lexical_interval) * self.non_lexical_mask_ratio))
@@ -318,7 +317,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))
                 and batch_idx < self.config.get("num_valid_plots", 20)):
             fig = self.decoder.plot(mel_spec.cpu().numpy())
-            self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0][0]}", fig,
+            self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0]}", fig,
                                               self.global_step)
 
     def on_validation_epoch_end(self):

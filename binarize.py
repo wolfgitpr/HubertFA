@@ -287,11 +287,11 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
 
             return {
                 'name': [str(_item["name"])] * B,
-                'input_feature': units.cpu().numpy().astype("float32"),  # [B, T, C]
+                'input_feature': units.cpu().numpy().astype("float16"),  # [B, T, C]
                 'mel_spec': np.repeat(mel_spec, B, axis=0).astype("float32"),  # (1,C,T)
                 "non_lexical_target": np.repeat(non_lexical_target[np.newaxis, :], B, axis=0).astype("int32"),
                 "non_lexical_intervals": np.repeat(non_lexical_intervals[np.newaxis, :], B, axis=0).astype("int32"),
-                "wav_length": wav_length
+                "wav_length": wav_length * B
             }
 
         except Exception as e:
@@ -506,8 +506,8 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
 
             return {
                 'name': [str(_item["name"])] * B,
-                'input_feature': units.cpu().numpy().astype("float32"),  # (B,T,C)
-                'curves': np.repeat(curves.cpu().numpy(), B, axis=0).astype("float32"),  # (B,1,C)
+                'input_feature': units.cpu().numpy().astype("float16"),  # (B,T,C)
+                'curves': np.repeat(curves.cpu().numpy(), B, axis=0).astype("float16"),  # (B,1,C)
                 'mel_spec': np.repeat(mel_spec, B, axis=0).astype("float32"),  # (1,C,T)
                 'ph_id_seq': np.repeat([ph_id_seq], B, axis=0).astype("int32"),  # (N,)
                 'ph_edge': np.repeat([ph_edge], B, axis=0).astype("float32"),  # (T,)
@@ -517,7 +517,7 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
                 'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),
                 'ph_seq_raw': _item.ph_seq,
                 'ph_seq': [[ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0]] * B,
-                "wav_length": wav_length
+                "wav_length": wav_length * B
             }
 
         except Exception as e:
