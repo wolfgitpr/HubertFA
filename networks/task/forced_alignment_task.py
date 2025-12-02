@@ -13,8 +13,8 @@ from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
-from tools.decoder import AlignmentDecoder
 from tools.binarize_util import load_wav, get_curves
+from tools.decoder import AlignmentDecoder
 from tools.encoder import UnitsEncoder
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
 
@@ -59,8 +59,10 @@ class LitForcedAlignmentTask(pl.LightningModule):
             dropout=self.fa_arg["dropout"],
         )
 
-        self.head = nn.Linear(
-            self.fa_arg["hidden_dims"], self.vocab["vocab_size"] + 2
+        self.head = nn.Conv1d(
+            in_channels=self.fa_arg["hidden_dims"],
+            out_channels=self.vocab["vocab_size"] + 2,
+            kernel_size=1
         )
 
         self.curves_edge_fusion = PowerCurveEdgeFusion(
@@ -160,13 +162,13 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
         with torch.no_grad():
             (
-                ph_frame_logits,  # (B, T, vocab_size)
+                ph_frame_logits,  # (B, C, T)
                 ph_edge_logits,  # (B, T)
-                ctc_logits,  # (B, T, vocab_size)
+                ctc_logits,  # (B, C, T)
             ) = self.forward(input_feature, curves)
 
         words, _ = self.decoder.decode(
-            ph_frame_logits.float().cpu().numpy(),
+            ph_frame_logits.float().cpu().numpy(),  # (B, C, T)
             ph_edge_logits.float().cpu().numpy(),
             wav_length, ph_seq, word_seq, ph_idx_to_word_idx
         )
@@ -176,11 +178,11 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def _get_consistency_loss(
             self,
-            ph_frame_logits,  # [B,T,vocab_size]
+            ph_frame_logits,  # [B,vocab_size,T]
             ph_edge_logits,  # [B,T]
     ):
         def compute_consistency_for_frame_logits(logits):
-            B, T, C = logits.shape
+            B, C, T = logits.shape
 
             if self.aug_num <= 1:
                 return torch.tensor(0.0, device=self.device)
@@ -191,18 +193,22 @@ class LitForcedAlignmentTask(pl.LightningModule):
             if batch_size == 0:
                 return torch.tensor(0.0, device=self.device)
 
-            grouped_logits = logits.view(batch_size, self.aug_num, T, C)  # [B, aug_num, T, C]
-            original_logits = grouped_logits[:, 0]  # [B, T, C]
-            augmented_logits = grouped_logits[:, 1:]  # [B, aug_num-1, T, C]
+            grouped_logits = logits.view(batch_size, self.aug_num, C, T)  # [B, aug_num, C, T]
+            original_logits = grouped_logits[:, 0]  # [B, C, T]
+            augmented_logits = grouped_logits[:, 1:]  # [B, aug_num-1, C, T]
 
             consistency_losses = []
             for i in range(augmented_logits.size(1)):
-                aug_logit = augmented_logits[:, i]  # [B, T, C]
+                aug_logit = augmented_logits[:, i]  # [B, C, T]
 
-                original_probs = F.softmax(original_logits, dim=-1)
-                aug_probs = F.softmax(aug_logit, dim=-1)
+                original_probs = F.softmax(original_logits, dim=1)
+                aug_probs = F.softmax(aug_logit, dim=1)
 
-                kl_loss = F.kl_div(aug_probs.log(), original_probs, reduction='batchmean', log_target=False)
+                original_probs_T = original_probs.transpose(1, 2)  # [B, T, C]
+                aug_probs_T = aug_probs.transpose(1, 2)  # [B, T, C]
+
+                kl_loss = F.kl_div(torch.log(aug_probs_T + 1e-8), original_probs_T, reduction='batchmean',
+                                   log_target=False)
                 mse_loss = F.mse_loss(aug_probs, original_probs)
 
                 combined_loss = 0.7 * kl_loss + 0.3 * mse_loss
@@ -253,9 +259,9 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def _get_loss(
             self,
-            ph_frame_logits,  # (B, T, vocab_size)
+            ph_frame_logits,  # (B, C, T)
             ph_edge_logits,  # (B, T)
-            ctc_logits,  # (B, T, vocab_size)
+            ctc_logits,  # (B, C, T)
             ph_frame_gt,  # (B, T)
             ph_edge_gt,  # (B, T)
             ph_seq_gt,  # (B, S)
@@ -267,38 +273,41 @@ class LitForcedAlignmentTask(pl.LightningModule):
         device = ph_frame_logits.device
         ZERO = torch.tensor(0.0, device=device, requires_grad=True)
 
-        time_mask = torch.arange(ph_frame_logits.shape[1], device=device)[None, :] < input_feature_lengths[:, None]
-        time_mask = time_mask.float()
+        time_mask = torch.arange(ph_frame_logits.shape[2], device=device)[None, :] < input_feature_lengths[:, None]
+        time_mask = time_mask.float()  # (B, T)
 
-        edge_diff_gt = (ph_edge_gt[:, 1:] - ph_edge_gt[:, :-1])
+        edge_diff_gt = torch.diff(ph_edge_gt, dim=1)
         edge_diff_gt = (edge_diff_gt + 1) / 2
 
-        edge_diff_pred = torch.sigmoid(ph_edge_logits[:, 1:]) - torch.sigmoid(ph_edge_logits[:, :-1])
+        ph_edge_sigmoid = torch.sigmoid(ph_edge_logits)
+        edge_diff_pred = torch.diff(ph_edge_sigmoid, dim=1)
         edge_diff_pred = (edge_diff_pred + 1) / 2
 
         valid_diff_mask = time_mask[:, 1:] > 0
         ph_edge_diff_loss = self.ph_edge_diff_GHM_loss_fn(
-            edge_diff_pred.unsqueeze(-1),  # (B,T-1,1)
-            edge_diff_gt.unsqueeze(-1),  # (B,T-1,1)
-            valid_diff_mask.unsqueeze(-1),
+            edge_diff_pred,  # (B,T-1)
+            edge_diff_gt,  # (B,T-1)
+            valid_diff_mask,
             valid
         ) if valid_diff_mask.any() else ZERO
 
+        combined_mask = ph_mask.unsqueeze(-1) * time_mask.unsqueeze(1)  # (B, C, T)
         ph_frame_GHM_loss = self.ph_frame_GHM_loss_fn(
-            ph_frame_logits, ph_frame_gt,
-            ph_mask.unsqueeze(1) * time_mask.unsqueeze(-1),
+            ph_frame_logits,  # (B, C, T)
+            ph_frame_gt,  # (B, T)
+            combined_mask,  # (B, C, T)
             valid
         )
 
         ph_edge_GHM_loss = self.ph_edge_GHM_loss_fn(
-            ph_edge_logits.unsqueeze(-1),
-            ph_edge_gt.unsqueeze(-1),
-            time_mask.unsqueeze(-1),
+            ph_edge_logits,  # (B, T)
+            ph_edge_gt,  # (B, T)
+            time_mask,  # (B, T)
             valid
         )
 
-        ctc_log_probs = torch.log_softmax(ctc_logits, dim=-1)
-        ctc_log_probs = ctc_log_probs.permute(1, 0, 2)  # (T, B, C)
+        ctc_log_probs = torch.log_softmax(ctc_logits, dim=1)
+        ctc_log_probs = ctc_log_probs.permute(2, 0, 1)  # (T, B, C)
 
         ctc_GHM_loss = self.CTC_GHM_loss_fn(
             ctc_log_probs,
@@ -322,22 +331,27 @@ class LitForcedAlignmentTask(pl.LightningModule):
         return losses
 
     def forward(self,
-                x,  # [B, T, C]
+                x,  # [B, C, T]
                 curves  # [B, C, T]
                 ):
-        x = self.backbone(x)  # [B, T, hidden_dims]
-        logits = self.head(x)  # [B, T, vocab_size + 2]
-        ph_frame_logits = logits[:, :, 2:]  # [B, T, vocab_size]
+        x = self.backbone(x)  # [B, hidden_dims, T]
+        edge_enhancement = self.curves_edge_fusion(x, curves)  # [B, 1, T]
 
-        edge_enhancement = self.curves_edge_fusion(x, curves)  # [B, T, 1]
-        ph_edge_logits = logits[:, :, 0] + edge_enhancement.squeeze(-1)  # [B, T]
+        logits = self.head(x)  # [B, vocab_size + 2, T]
 
-        ctc_logits = torch.cat([logits[:, :, [1]], logits[:, :, 3:]], dim=-1)  # [B, T, vocab_size]
+        ph_frame_logits = logits[:, 2:, :]  # [B, vocab_size, T]
+        ph_edge_logits = logits[:, 0, :] + edge_enhancement.squeeze(1)  # [B, T]
+
+        ctc_logits = torch.cat([
+            logits[:, [1], :],  # [B, 1, T]
+            logits[:, 3:, :]  # [B, vocab_size-1, T]
+        ], dim=1)  # [B, vocab_size, T]
+
         return ph_frame_logits, ph_edge_logits, ctc_logits
 
     def training_step(self, batch, batch_idx):
         (
-            input_feature,  # (B, n_mels, T)
+            input_feature,  # (B, C, T)
             input_feature_lengths,  # (B)
             ph_seq,  # (B S)
             ph_id_seq,  # (B S)
@@ -350,13 +364,13 @@ class LitForcedAlignmentTask(pl.LightningModule):
             name,
             ph_seq_raw,
             ph_time_raw,
-            curves,  # [B, T, 2]
+            curves,  # [B, 1, T]
         ) = batch
 
         (
-            ph_frame_logits,  # (B, T, vocab_size)
+            ph_frame_logits,  # (B, C, T)
             ph_edge_logits,  # (B, T)
-            ctc_logits,  # (B, T, vocab_size)
+            ctc_logits,  # (B, C, T)
         ) = self.forward(input_feature, curves)
 
         losses = self._get_loss(
@@ -378,7 +392,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         losses.append(total_loss)
 
         log_dict = {
-            f"train_loss/{k}": v
+            f"train/{k}": v
             for k, v in zip(self.losses_names, losses)
             if v != 0
         }
@@ -421,7 +435,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         (
-            input_feature,  # (B, n_mels, T)
+            input_feature,  # (B, C, T)
             input_feature_lengths,  # (B)
             ph_seq,  # (B S)
             ph_seq_id,  # (B S)
@@ -434,13 +448,13 @@ class LitForcedAlignmentTask(pl.LightningModule):
             name,
             ph_seq_raw,
             ph_time_raw,
-            curves,  # [B, T, 2]
+            curves,  # [B, 1, T]
         ) = batch
 
         (
-            ph_frame_logits,  # (B, T, vocab_size)-
+            ph_frame_logits,  # (B, C, T)
             ph_edge_logits,  # (B, T)
-            ctc_logits,  # (B, T, vocab_size)
+            ctc_logits,  # (B, C, T)
         ) = self.forward(input_feature, curves)
 
         ph_seq_g2p = []
@@ -453,7 +467,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             last_ph = temp_ph
 
         self.decoder.decode(
-            ph_frame_logits.float().cpu().numpy(),
+            ph_frame_logits.float().cpu().numpy(),  # (B, C, T)
             ph_edge_logits.float().cpu().numpy(),
             None, ph_seq_g2p, None, None, False
         )

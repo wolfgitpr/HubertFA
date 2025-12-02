@@ -81,7 +81,7 @@ def plot_force_alignment_prob(melspec,
     ax1.set_ylabel('Mel Bin')
 
     ax2.imshow(
-        ph_frame_prob.T,
+        ph_frame_prob,
         origin="lower",
         aspect="auto",
         interpolation="nearest"
@@ -91,8 +91,8 @@ def plot_force_alignment_prob(melspec,
     ax2.set_ylabel('Probability')
 
     ax2.plot(x, ph_frame_id_gt, color="red", linewidth=1.5)
-    ax2.plot(x, edge_prob * ph_frame_prob.shape[-1], color="black", linewidth=1)
-    ax2.fill_between(x, edge_prob * ph_frame_prob.shape[-1], color="black", alpha=0.3)
+    ax2.plot(x, edge_prob * ph_frame_prob.shape[0], color="black", linewidth=1)
+    ax2.fill_between(x, edge_prob * ph_frame_prob.shape[0], color="black", alpha=0.3)
 
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.2)

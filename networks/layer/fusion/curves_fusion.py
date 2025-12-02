@@ -2,16 +2,6 @@ import torch
 import torch.nn as nn
 
 
-class Transpose(nn.Module):
-    def __init__(self, dim1, dim2):
-        super().__init__()
-        self.dim1 = dim1
-        self.dim2 = dim2
-
-    def forward(self, x):
-        return x.transpose(self.dim1, self.dim2)
-
-
 class InstanceNorm1dONNX(nn.Module):
     def __init__(self, num_features, eps=1e-5, affine=True):
         super().__init__()
@@ -60,7 +50,7 @@ class PowerCurveProcessor(nn.Module):
     def forward(self, x):
         power_processed = self.power_branch(x[:, 0:1, :])  # [B, 1, T] -> [B, hidden_dim, T]
         output = self.fusion(power_processed)  # [B, output_dim, T]
-        return output.transpose(1, 2)  # [B, T, output_dim]
+        return output  # [B, output_dim, T]
 
 
 class ResidualBlock(nn.Module):
@@ -119,42 +109,36 @@ class PowerCurveEdgeFusion(nn.Module):
         )
 
         self.feature_proj = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
-            Transpose(1, 2),
+            nn.Conv1d(feature_dim, hidden_dim, kernel_size=1),
             InstanceNorm1dONNX(hidden_dim),
-            Transpose(1, 2),
             nn.SiLU()
         )
 
         self.gate = nn.Sequential(
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            Transpose(1, 2),
+            nn.Conv1d(hidden_dim * 2, hidden_dim, kernel_size=1),
             InstanceNorm1dONNX(hidden_dim),
-            Transpose(1, 2),
             nn.Sigmoid()
         )
 
         self.fusion_output = nn.Sequential(
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            Transpose(1, 2),
+            nn.Conv1d(hidden_dim * 2, hidden_dim, kernel_size=1),
             InstanceNorm1dONNX(hidden_dim),
-            Transpose(1, 2),
             nn.SiLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1),
+            nn.Conv1d(hidden_dim, 1, kernel_size=1),
             nn.Sigmoid()
         )
 
     def forward(self,
-                x,  # [B, T, hidden_dims]
+                x,  # [B, feature_dim, T]
                 curves,  # [B, 1, T]
                 ):
-        curve_features = self.curve_processor(curves)  # [B, T, hidden_dim]
-        feature_proj = self.feature_proj(x)  # [B, T, hidden_dim]
+        curve_features = self.curve_processor(curves)  # [B, hidden_dim, T]
+        feature_proj = self.feature_proj(x)  # [B, hidden_dim, T]
 
-        gate_value = self.gate(torch.cat([feature_proj, curve_features], dim=-1))
+        gate_input = torch.cat([feature_proj, curve_features], dim=1)  # [B, 2*hidden_dim, T]
+        gate_value = self.gate(gate_input)  # [B, hidden_dim, T]
+
         gated_features = gate_value * feature_proj + (1 - gate_value) * curve_features
-
-        fused_features = torch.cat([gated_features, curve_features], dim=-1)
-        edge_enhancement = self.fusion_output(fused_features)
-        return edge_enhancement  # [B, T, 1]
+        fused_features = torch.cat([gated_features, curve_features], dim=1)  # [B, 2*hidden_dim, T]
+        return self.fusion_output(fused_features)  # [B, 1, T]

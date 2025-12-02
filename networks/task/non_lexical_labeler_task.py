@@ -80,8 +80,8 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
             self.get_mel_spec = MelSpecExtractor(**self.mel_spec_config, device=self.device)
 
     def make_non_lexical_mask(self, shape, non_lexical_intervals):
-        B, T, C = shape
-        non_lexical_mask = torch.zeros((B, T, 1), dtype=torch.bool, device=self.device)
+        B, C, T = shape
+        non_lexical_mask = torch.zeros((B, 1, T), dtype=torch.bool, device=self.device)
 
         if self.non_lexical_mask_ratio > 0:
             mask_idxes = random.choices(range(B), k=int(B * self.non_lexical_mask_ratio))
@@ -99,7 +99,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
                         if ph_len > 0:
                             mask_len = max(1, int(self.non_lexical_mask_ratio * ph_len))
                             offset = random.randint(0, max(0, ph_len - mask_len))
-                            non_lexical_mask[mask_idx, start_frame + offset:start_frame + offset + mask_len, :] = True
+                            non_lexical_mask[mask_idx, :, start_frame + offset:start_frame + offset + mask_len] = True
         return non_lexical_mask
 
     def predict_step(self, batch, batch_idx):
@@ -214,7 +214,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         return losses
 
     def forward(self,
-                x,  # [B, T, C]
+                x,  # [B, C, T]
                 ):
         cvnt_logits = self.cvnt(x)  # [B, N, T]
         return cvnt_logits
@@ -223,20 +223,20 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         (
             name,
             mel_spec,
-            input_feature,  # [B, T, C]
+            input_feature,  # [B, C, T]
             input_feature_lengths,  # (B)
-            non_lexical_target,
-            non_lexical_intervals,  # [B,N,T]
+            non_lexical_target,  # [B, N, T]
+            non_lexical_intervals,
         ) = batch
 
-        non_lexical_mask = self.make_non_lexical_mask(input_feature.shape, non_lexical_intervals)
+        non_lexical_mask = self.make_non_lexical_mask(input_feature.shape, non_lexical_intervals)  # [B, 1, T]
         masked_input = torch.where(
             non_lexical_mask,
             torch.zeros_like(input_feature),
             input_feature
         )
         masked_non_lexical_target = torch.where(
-            non_lexical_mask.transpose(1, 2),
+            non_lexical_mask,
             torch.zeros_like(non_lexical_target),
             non_lexical_target
         )
@@ -248,7 +248,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         losses.append(total_loss)
 
         log_dict = {
-            f"train_loss/{k}": v
+            f"train/{k}": v
             for k, v in zip(self.losses_names, losses)
             if v != 0
         }
@@ -280,7 +280,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         (
             name,
             mel_spec,
-            input_feature,  # [B, T, C]
+            input_feature,  # [B, C, T]
             input_feature_lengths,  # (B)
             non_lexical_target,
             non_lexical_intervals,  # [B,N,T]

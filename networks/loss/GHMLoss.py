@@ -45,42 +45,9 @@ class CTCGHMLoss(nn.Module):
         return loss_weighted.mean()
 
 
-class BCEGHMLoss(nn.Module):
-    def __init__(self, num_bins=10, alpha=0.999, label_smoothing=0.0):
-        super().__init__()
-        self.loss_fn = nn.BCELoss(reduction="none")
-        self.num_bins = num_bins
-        self.register_buffer("GD_stat_ema", torch.ones(num_bins))
-        self.alpha = alpha
-        self.label_smoothing = label_smoothing
-
-    def forward(self, pred_prob, target_prob, mask=None, valid=False):
-        if pred_prob.size(0) == 0:
-            return torch.tensor(0.0, device=pred_prob.device)
-
-        mask = mask.expand_as(pred_prob) if mask is not None else 1.0
-        target_prob = target_prob.clamp(self.label_smoothing, 1 - self.label_smoothing)
-
-        raw_loss = self.loss_fn(pred_prob, target_prob)
-        grad_mag = (pred_prob - target_prob).abs()
-        bin_indices = get_bin_index(grad_mag, self.num_bins)
-        weights = 1 / self.GD_stat_ema[bin_indices].detach()
-
-        loss_weighted = (raw_loss * weights * mask).sum() / mask.sum().clamp(min=1e-10)
-
-        if not valid:
-            hist = torch.bincount(bin_indices.flatten(),
-                                  weights=mask.flatten().float(),
-                                  minlength=self.num_bins)
-            self.GD_stat_ema.data = update_ema(self.GD_stat_ema, self.alpha, self.num_bins, hist)
-
-        return loss_weighted
-
-
 class MultiLabelGHMLoss(nn.Module):
     def __init__(self, num_classes: int, num_bins: int = 10, alpha: float = 0.999, label_smoothing: float = 0.0):
         super().__init__()
-
         self.alpha = alpha
         self.num_bins = num_bins
         self.num_classes = num_classes
@@ -91,9 +58,11 @@ class MultiLabelGHMLoss(nn.Module):
 
         self.loss_fn = nn.BCEWithLogitsLoss(reduction="none")
 
-    def forward(self, pred_logits,  # [1,T,1]
-                target_prob,  # [1,T,1]
-                mask=None, valid=False):
+    def forward(self,
+                pred_logits,  # [B, T]
+                target_prob,  # [B, T]
+                mask=None,  # [B, T]
+                valid=False):
         if pred_logits.size(0) == 0:
             return torch.tensor(0.0, device=pred_logits.device)
 
@@ -106,23 +75,27 @@ class MultiLabelGHMLoss(nn.Module):
         bin_indices = get_bin_index(grad_mag, self.num_bins)
         GD_weights = 1 / self.GD_stat_ema[bin_indices].detach()
 
-        target_porb_index = (target_prob * 3).floor().long().clamp(0, 2) + 3 * torch.arange(
-            self.num_classes, device=target_prob.device).unsqueeze(0)
-        classes_weights = 1 / self.label_stat_ema_each_class[target_porb_index].detach()
-        weights = torch.sqrt(GD_weights * classes_weights)
+        target_prob_index = (target_prob * 3).floor().long().clamp(0, 2)
+        classes_weights = 1 / self.label_stat_ema_each_class[target_prob_index].detach()
 
+        weights = torch.sqrt(GD_weights * classes_weights)
         loss_weighted = (raw_loss * weights * mask).sum() / mask.sum().clamp(min=1e-10)
 
         if not valid:
-            GD_hist = torch.bincount(bin_indices.flatten(),
-                                     weights=mask.flatten().float(),
-                                     minlength=self.num_bins)
-            label_hist = torch.bincount(target_porb_index.flatten(),
-                                        weights=mask.flatten().float(),
-                                        minlength=self.num_classes * 3)
+            GD_hist = torch.bincount(
+                bin_indices.flatten(),
+                weights=mask.flatten().float(),
+                minlength=self.num_bins
+            )
+            label_hist = torch.bincount(
+                target_prob_index.flatten(),
+                weights=mask.flatten().float(),
+                minlength=self.num_classes * 3
+            )
             self.GD_stat_ema.data = update_ema(self.GD_stat_ema, self.alpha, self.num_bins, GD_hist)
             self.label_stat_ema_each_class.data = update_ema(
-                self.label_stat_ema_each_class, self.alpha, self.num_classes * 3, label_hist)
+                self.label_stat_ema_each_class, self.alpha, self.num_classes * 3, label_hist
+            )
 
         return loss_weighted
 
@@ -140,28 +113,29 @@ class GHMLoss(torch.nn.Module):
         self.loss_fn = nn.CrossEntropyLoss(reduction="none")
         self.label_smoothing = label_smoothing
 
-    def forward(self, pred_logits, target_label, mask=None, valid=False):
+    def forward(self, pred_logits,  # (B, C, T)
+                target_label,  # (B, T)
+                mask=None,  # (B, C, T)
+                valid=False):
         if len(pred_logits) <= 0:
             return torch.tensor(0.0).to(pred_logits.device)
 
-        # pred: [B, T, C]
-        assert len(pred_logits.shape) == 3 and pred_logits.shape[-1] == self.num_classes
+        # pred: [B, C, T]
+        assert len(pred_logits.shape) == 3 and pred_logits.shape[1] == self.num_classes
 
         # target: [B, T]
         assert len(target_label.shape) == 2
         assert target_label.shape[0] == pred_logits.shape[0]
-        assert target_label.shape[1] == pred_logits.shape[1]
+        assert target_label.shape[1] == pred_logits.shape[-1]
         target_label = target_label.long()
 
-        # mask: [B, T] or [B, T, C]
+        # mask: [B, C, T]
         if mask is None:
             mask = torch.ones_like(pred_logits).to(pred_logits.device)
-        if len(mask.shape) == 2:
-            mask = mask.unsqueeze(-1)
         assert mask.shape[0] == target_label.shape[0]
-        assert mask.shape[1] == target_label.shape[1]
-        assert mask.shape[-1] == 1 or mask.shape[-1] == self.num_classes
-        time_mask = mask.any(dim=-1)  # [B, T]
+        assert mask.shape[1] == self.num_classes
+        assert mask.shape[2] == target_label.shape[1]
+        time_mask = mask.any(dim=1)  # [B, T]
 
         pred_logits = pred_logits - 1e9 * mask.logical_not().float()
         target_prob = (
@@ -169,29 +143,22 @@ class GHMLoss(torch.nn.Module):
             .float()
             .clamp(self.label_smoothing, 1 - self.label_smoothing)
         )
-        target_prob = target_prob * mask.float()
-        raw_loss = self.loss_fn(
-            pred_logits.transpose(1, 2), target_prob.transpose(1, 2)
-        )  # [B, T]
-        pred_probs = torch.softmax(pred_logits, dim=-1).detach()  # [B, T, C]
+        target_prob = target_prob.transpose(1, 2) * mask.float()
+        raw_loss = self.loss_fn(pred_logits, target_prob)  # [B, T]
+        pred_probs = torch.softmax(pred_logits, dim=1).detach()  # [B, C, T]
 
         # calculate weighted loss
-        GD = (pred_probs - target_prob).abs()
-        GD = torch.gather(GD, -1, target_label.unsqueeze(-1)).squeeze(-1)  # [B, T]
+        GD = (pred_probs - target_prob).abs()  # [B, C, T]
+        GD = torch.gather(GD, 1, target_label.unsqueeze(1)).squeeze(1)  # [B, T]
         GD_index = torch.floor(GD * self.num_bins).long().clamp(0, self.num_bins - 1)
-        # GD = GD - 1e9 * time_mask.logical_not().float()
-        weights = torch.sqrt(
-            self.class_ema[target_label].detach() * self.GD_ema[GD_index].detach()
-        )  # [B, T]
+        weights = torch.sqrt(self.class_ema[target_label].detach() * self.GD_ema[GD_index].detach())  # [B, T]
         loss_weighted = (raw_loss / weights) * time_mask.float()  # [B, T]
         loss_final = torch.sum(loss_weighted) / torch.sum(time_mask.float())
 
         if not valid:
             # update ema
             # "Elements lower than min and higher than max and NaN elements are ignored."
-            target_label = (
-                    target_label + (self.num_classes + 10) * time_mask.logical_not().long()
-            )
+            target_label = (target_label + (self.num_classes + 10) * time_mask.logical_not().long())
             GD_index = GD_index + (self.num_bins + 10) * time_mask.logical_not().long()
             class_hist = torch.bincount(
                 input=target_label.flatten(),

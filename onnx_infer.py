@@ -103,7 +103,7 @@ def infer(onnx_folder, folder, g2p, non_lexical_phonemes, language, dictionary, 
             results = run_onnx(model, {'waveform': [padded_wav]})
 
             words, _ = fa_decoder.decode(
-                ph_frame_logits=results['ph_frame_logits'][:, padded_frames + 1:, :],
+                ph_frame_logits=results['ph_frame_logits'][:, :, padded_frames + 1:],
                 ph_edge_logits=results['ph_edge_logits'][:, padded_frames + 1:],
                 wav_length=wav_length, ph_seq=ph_seq, word_seq=word_seq, ph_idx_to_word_idx=ph_idx_to_word_idx
             )

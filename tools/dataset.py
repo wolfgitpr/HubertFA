@@ -209,10 +209,6 @@ class BinningAudioBatchSampler(torch.utils.data.Sampler):
         return self.total_batches
 
 
-def pad_1d(x, target_length):
-    return torch.nn.functional.pad(torch.as_tensor(x), (0, target_length - len(x)), mode='constant', value=0)
-
-
 def pad_2d(x, target_length, dim=-1):
     return torch.nn.functional.pad(torch.as_tensor(x), (0, target_length - x.shape[dim]), mode='constant', value=0)
 
@@ -235,7 +231,7 @@ def non_lexical_labeler_collate_fn(batch):
         mel_spec: (B T)
     """
     # Calculate maximum lengths for padding
-    input_feature_lengths = torch.tensor([item[2].shape[-2] for item in batch for _ in range(len(batch[0][2]))])
+    input_feature_lengths = torch.tensor([item[2].shape[-1] for item in batch for _ in range(len(batch[0][2]))])
     max_len = input_feature_lengths.max().item()
 
     padded_batch = []
@@ -246,7 +242,7 @@ def non_lexical_labeler_collate_fn(batch):
                 torch.as_tensor(item[1]), (0, max_len - item[1].shape[-1]), mode='constant', value=0
             ),  # mel_spec
             torch.nn.functional.pad(
-                torch.as_tensor(item[2]), (0, 0, 0, max_len - item[2].shape[-2], 0, 0), mode='constant', value=0
+                torch.as_tensor(item[2]), (0, max_len - item[2].shape[-1], 0, 0, 0, 0), mode='constant', value=0
             ),  # input_feature
             pad_2d(item[3], max_len),  # non_lexical_target
             item[4],  # non_lexical_interval
@@ -279,7 +275,7 @@ def forced_alignment_collate_fn(batch):
         melspec: (B T)
     """
     # Calculate maximum lengths for padding
-    input_feature_lengths = torch.tensor([item[0].shape[-2] for item in batch for _ in range(len(batch[0][0]))])
+    input_feature_lengths = torch.tensor([item[0].shape[-1] for item in batch for _ in range(len(batch[0][0]))])
     max_len = input_feature_lengths.max().item()
     ph_seq_lengths = torch.tensor([len(item[1][0]) for item in batch for _ in range(len(batch[0][0]))])
     max_ph_seq_len = ph_seq_lengths.max().item()
@@ -288,7 +284,7 @@ def forced_alignment_collate_fn(batch):
     for item in batch:
         padded_batch.append((
             torch.nn.functional.pad(
-                torch.as_tensor(item[0]), (0, 0, 0, max_len - item[0].shape[-2], 0, 0), mode='constant', value=0
+                torch.as_tensor(item[0]), (0, max_len - item[0].shape[-1], 0, 0, 0, 0), mode='constant', value=0
             ),  # input_feature
             item[1],  # ph_seq
             pad_2d(item[2], max_ph_seq_len),  # ph_id_seq

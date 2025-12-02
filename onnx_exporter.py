@@ -70,7 +70,7 @@ class UnitsAligner(torch.nn.Module):
         index = torch.clamp(torch.round(self.ratio * torch.arange(n_frames).to(self.device)).long(),
                             max=units.size(1) - 1)
         units_aligned = torch.gather(units, 1, index.unsqueeze(0).unsqueeze(-1).repeat([1, 1, units.size(-1)]))
-        return units_aligned  # [B, T, C]
+        return units_aligned.transpose(1, 2).half().float()  # [B, C, T]
 
 
 class Encoder(torch.nn.Module):
@@ -118,9 +118,9 @@ def export_encoder(encoder_folder, _hubert_config, _mel_config, hubert_path=None
         input_names=["waveform"],
         output_names=["units_aligned", "curves"],
         dynamic_axes={
-            "waveform": {1: "n_samples"},
-            "units_aligned": {1: "n_samples"},
-            "curves": {2: "n_frames"},
+            "waveform": {1: "n_samples"},  # (B, T)
+            "units_aligned": {2: "n_samples"},  # (B, C, T)
+            "curves": {2: "n_frames"},  # (B, N, T)
         }
     )
     onnx_model, check = onnxsim.simplify(encoder_onnx_path, include_subgraph=True)
@@ -137,8 +137,8 @@ def export_predict_model(onnx_folder: pathlib.Path, nll_ckpt_path: pathlib.Path,
     model.eval()
 
     n_frames = 1000
-    input_feature = torch.randn((1, n_frames, _hubert_config["channel"]), dtype=torch.float32,
-                                device=device)  # (B, T, C)
+    input_feature = torch.randn((1, _hubert_config["channel"], n_frames), dtype=torch.float32,
+                                device=device)  # (B, C, T)
     curves = torch.randn((1, 1, n_frames), dtype=torch.float32, device=device)  # (B, 1, T)
 
     with torch.no_grad():
@@ -149,12 +149,12 @@ def export_predict_model(onnx_folder: pathlib.Path, nll_ckpt_path: pathlib.Path,
             input_names=['input_feature', 'curves'],
             output_names=['cvnt_logits', 'ph_frame_logits', 'ph_edge_logits', 'ctc_logits'],
             dynamic_axes={
-                'input_feature': {1: 'n_samples'},
-                'curves': {2: 'n_samples'},
-                'cvnt_logits': {1: 'n_samples'},  # (N, T)
-                'ph_frame_logits': {1: 'n_samples'},  # (T, vocab_size)
-                'ph_edge_logits': {1: 'n_samples'},  # (T)
-                'ctc_logits': {1: 'n_samples'},  # (T, vocab_size)
+                'input_feature': {2: 'n_samples'},  # (B, C, T)
+                'curves': {2: 'n_samples'},  # (B, N, T)
+                'cvnt_logits': {2: 'n_samples'},  # (B, N, T)
+                'ph_frame_logits': {2: 'n_samples'},  # (B, vocab_size, T)
+                'ph_edge_logits': {1: 'n_samples'},  # (B, T)
+                'ctc_logits': {2: 'n_samples'},  # (B, vocab_size, T)
             },
             opset_version=17
         )

@@ -1,4 +1,5 @@
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class UNetBackbone(nn.Module):
@@ -12,7 +13,7 @@ class UNetBackbone(nn.Module):
             up_sampling,
             down_sampling_factor: int = 2,
             down_sampling_times: int = 5,
-            channels_scaleup_factor: int = 2,
+            channels_scaleup_factor: float = 2.0,
             dropout: float = 0.1,
     ):
         """_summary_
@@ -21,9 +22,9 @@ class UNetBackbone(nn.Module):
             input_dims (int):
             output_dims (int):
             hidden_dims (int):
-            block (nn.Module): shape: (B, T, C) -> shape: (B, T, C)
-            down_sampling (nn.Module): shape: (B, T, C) -> shape: (B, T/down_sampling_factor, C*2)
-            up_sampling (nn.Module): shape: (B, T, C) -> shape: (B, T*down_sampling_factor, C/2)
+            block (nn.Module): shape: (B, C, T) -> shape: (B, C, T)
+            down_sampling (nn.Module): shape: (B, C, T) -> shape: (B, C*2, T/down_sampling_factor)
+            up_sampling (nn.Module): shape: (B, C, T) -> shape: (B, C/2, T*down_sampling_factor)
         """
         super(UNetBackbone, self).__init__()
 
@@ -94,21 +95,26 @@ class UNetBackbone(nn.Module):
         self.decoders.append(block(hidden_dims, output_dims))
 
     def forward(self,
-                x,  # [B, T, C]
+                x,  # [B, C, T]
                 ):
-        T = x.shape[1]
+        B, C, T = x.shape
         padding_len = (-T) % self.divisible_factor
-        x = nn.functional.pad(x, (0, 0, 0, padding_len))
+        x = F.pad(x, (0, padding_len))
 
-        h = [x]
+        current = x
+        encoder_outputs = []
+
         for encoder in self.encoders:
-            h.append(encoder(h[-1]))
+            current = encoder(current)
+            encoder_outputs.append(current)
 
-        h_ = [self.bottle_neck(h[-1])]
+        bottleneck_out = self.bottle_neck(encoder_outputs[-1])
+
+        current = bottleneck_out
         for i, decoder in enumerate(self.decoders):
-            h_.append(decoder(h_[-1] + h[-1 - i]))
+            skip_connection = encoder_outputs[-1 - i]
+            if current.shape != skip_connection.shape:
+                skip_connection = F.interpolate(skip_connection, size=current.shape[2:])
+            current = decoder(current + skip_connection)
 
-        out = h_[-1]
-        out = out[:, :T, :]
-
-        return out
+        return current[:, :, :T]
