@@ -172,8 +172,8 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_edge_logits.float().cpu().numpy(),
             wav_length, ph_seq, word_seq, ph_idx_to_word_idx
         )
-
         words.clear_language_prefix()
+        words.add_SP(wav_length)
         return wav_path, wav_length, words
 
     def _get_consistency_loss(
@@ -365,6 +365,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_seq_raw,
             ph_time_raw,
             curves,  # [B, 1, T]
+            wav_length,
         ) = batch
 
         (
@@ -449,6 +450,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             ph_seq_raw,
             ph_time_raw,
             curves,  # [B, 1, T]
+            wav_length,
         ) = batch
 
         (
@@ -469,7 +471,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
         self.decoder.decode(
             ph_frame_logits.float().cpu().numpy(),  # (B, C, T)
             ph_edge_logits.float().cpu().numpy(),
-            None, ph_seq_g2p, None, None, False
+            wav_length[0].float().cpu(), ph_seq_g2p, None, None, False
         )
 
         if dataloader_idx == 0 or self.config.get("get_evaluate_loss", False):

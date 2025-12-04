@@ -7,9 +7,9 @@ def get_bin_index(tensor, num_bins):
 
 
 def update_ema(ema, alpha, num_bins, hist):
-    hist = hist / hist.sum().clamp(min=1e-10) * num_bins
-    ema = ema * alpha + (1 - alpha) * hist
-    return ema / ema.sum().clamp(min=1e-10) * num_bins
+    hist_normalized = hist / hist.sum().clamp(min=1e-10) * num_bins
+    ema_updated = ema * alpha + (1 - alpha) * hist_normalized
+    return ema_updated / ema_updated.sum().clamp(min=1e-10) * num_bins
 
 
 class CTCGHMLoss(nn.Module):
@@ -71,6 +71,7 @@ class MultiLabelGHMLoss(nn.Module):
 
         raw_loss = self.loss_fn(pred_logits, target_prob)
         pred_prob = torch.sigmoid(pred_logits)
+
         grad_mag = (pred_prob - target_prob).abs()
         bin_indices = get_bin_index(grad_mag, self.num_bins)
         GD_weights = 1 / self.GD_stat_ema[bin_indices].detach()
@@ -120,62 +121,52 @@ class GHMLoss(torch.nn.Module):
         if len(pred_logits) <= 0:
             return torch.tensor(0.0).to(pred_logits.device)
 
-        # pred: [B, C, T]
-        assert len(pred_logits.shape) == 3 and pred_logits.shape[1] == self.num_classes
-
-        # target: [B, T]
-        assert len(target_label.shape) == 2
-        assert target_label.shape[0] == pred_logits.shape[0]
-        assert target_label.shape[1] == pred_logits.shape[-1]
+        B, C, T = pred_logits.shape
+        assert C == self.num_classes
         target_label = target_label.long()
 
         # mask: [B, C, T]
         if mask is None:
             mask = torch.ones_like(pred_logits).to(pred_logits.device)
-        assert mask.shape[0] == target_label.shape[0]
-        assert mask.shape[1] == self.num_classes
-        assert mask.shape[2] == target_label.shape[1]
         time_mask = mask.any(dim=1)  # [B, T]
+        valid_elements = time_mask.sum().float().clamp(min=1)
 
-        pred_logits = pred_logits - 1e9 * mask.logical_not().float()
-        target_prob = (
-            nn.functional.one_hot(target_label, num_classes=self.num_classes)
-            .float()
-            .clamp(self.label_smoothing, 1 - self.label_smoothing)
-        )
-        target_prob = target_prob.transpose(1, 2) * mask.float()
-        raw_loss = self.loss_fn(pred_logits, target_prob)  # [B, T]
-        pred_probs = torch.softmax(pred_logits, dim=1).detach()  # [B, C, T]
+        pred_logits_masked = pred_logits - 1e9 * mask.logical_not().float()
 
-        # calculate weighted loss
+        target_prob = nn.functional.one_hot(target_label, num_classes=self.num_classes).float()
+        target_prob = target_prob.clamp(self.label_smoothing, 1 - self.label_smoothing)
+        target_prob = target_prob.transpose(1, 2) * mask.float()  # [B, C, T]
+
+        raw_loss = self.loss_fn(pred_logits_masked, target_prob)  # [B, T]
+        pred_probs = torch.softmax(pred_logits_masked, dim=1).detach()  # [B, C, T]
+
         GD = (pred_probs - target_prob).abs()  # [B, C, T]
-        GD = torch.gather(GD, 1, target_label.unsqueeze(1)).squeeze(1)  # [B, T]
-        GD_index = torch.floor(GD * self.num_bins).long().clamp(0, self.num_bins - 1)
-        weights = torch.sqrt(self.class_ema[target_label].detach() * self.GD_ema[GD_index].detach())  # [B, T]
-        loss_weighted = (raw_loss / weights) * time_mask.float()  # [B, T]
-        loss_final = torch.sum(loss_weighted) / torch.sum(time_mask.float())
+        GD_target = torch.gather(GD, 1, target_label.unsqueeze(1)).squeeze(1)  # [B, T]
+        GD_index = get_bin_index(GD_target, self.num_bins)
+
+        class_weights = self.class_ema[target_label].detach()  # [B, T]
+        GD_weights = self.GD_ema[GD_index].detach()  # [B, T]
+        weights = torch.sqrt(class_weights * GD_weights)  # [B, T]
+
+        loss_weighted = (raw_loss / weights.clamp(min=1e-10)) * time_mask.float()  # [B, T]
+        loss_final = loss_weighted.sum() / valid_elements
 
         if not valid:
-            # update ema
-            # "Elements lower than min and higher than max and NaN elements are ignored."
-            target_label = (target_label + (self.num_classes + 10) * time_mask.logical_not().long())
-            GD_index = GD_index + (self.num_bins + 10) * time_mask.logical_not().long()
-            class_hist = torch.bincount(
-                input=target_label.flatten(),
-                weights=time_mask.flatten(),
-                minlength=self.num_classes,
-            )
-            class_hist = class_hist[: self.num_classes]
-            GD_hist = torch.bincount(
-                input=GD_index.flatten(),
-                weights=time_mask.flatten(),
-                minlength=self.num_bins,
-            )
-            GD_hist = GD_hist[: self.num_bins]
-            self.GD_ema = update_ema(self.GD_ema, self.alpha, self.num_bins, GD_hist)
-            self.class_ema = update_ema(
-                self.class_ema, self.alpha, self.num_classes, class_hist
-            )
+            if valid_elements > 0:
+                valid_target = target_label[time_mask]  # [N]
+                valid_GD_index = GD_index[time_mask]  # [N]
+
+                class_hist = torch.bincount(
+                    valid_target.flatten(),
+                    minlength=self.num_classes
+                )
+                GD_hist = torch.bincount(
+                    valid_GD_index.flatten(),
+                    minlength=self.num_bins
+                )
+
+                self.GD_ema = update_ema(self.GD_ema, self.alpha, self.num_bins, GD_hist)
+                self.class_ema = update_ema(self.class_ema, self.alpha, self.num_classes, class_hist)
 
         return loss_final
 
@@ -183,6 +174,11 @@ class GHMLoss(torch.nn.Module):
 if __name__ == "__main__":
     torch.manual_seed(42)
     loss_fn = MultiLabelGHMLoss(10, alpha=0.9)
-    _input = torch.sigmoid(torch.randn(3, 3, 10) * 10)
+    _input = torch.randn(3, 3, 10)  # logits
     target = (torch.randn(3, 3, 10) > 0).float()
-    print(loss_fn(_input, target))
+    print("MultiLabelGHMLoss test:", loss_fn(_input, target))
+
+    loss_fn2 = GHMLoss(num_classes=10, alpha=0.9)
+    _input2 = torch.randn(2, 10, 5)  # B=2, C=10, T=5
+    target2 = torch.randint(0, 10, (2, 5))  # B=2, T=5
+    print("GHMLoss test:", loss_fn2(_input2, target2))

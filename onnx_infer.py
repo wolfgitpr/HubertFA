@@ -14,7 +14,7 @@ from tools.align_word import WordList, Word, Phoneme
 from tools.config_utils import check_configs
 from tools.decoder import AlignmentDecoder, NonLexicalDecoder
 from tools.export_tool import Exporter
-from tools.post_processing import post_processing, find_all_duplicate_phonemes, remove_outliers_per_position
+from tools.post_processing import find_all_duplicate_phonemes, remove_outliers_per_position
 
 
 def load_yaml(file_path):
@@ -137,11 +137,8 @@ def infer(onnx_folder, folder, g2p, non_lexical_phonemes, language, dictionary, 
             for ph in phonemes:
                 word.append_phoneme(ph)
             result_word.append(word)
+        result_word.add_SP(wav_length)
         predictions.append((wav_path, wav_length, result_word))
-
-    predictions, log = post_processing(predictions)
-    if log:
-        print("error:", "\n".join(log))
 
     Exporter(predictions).export(['textgrid'])
     print("Output files are saved to the same folder as the input wav files.")

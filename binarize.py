@@ -86,7 +86,7 @@ class BaseBinarizer(object):
         train = True if prefix == "train" else False
 
         args = []
-        builder = IndexedDatasetBuilder(binary_data_folder, prefix=prefix)
+        builder = IndexedDatasetBuilder(binary_data_folder, aug_num=self.aug_num, prefix=prefix)
 
         for _, item in meta_data.iterrows():
             args.append((item, train))
@@ -113,7 +113,7 @@ class BaseBinarizer(object):
 
         builder.finalize()
 
-        total_time = sum(builder.wav_lengths)
+        total_time = sum(builder.aug_wav_lengths)
         print(
             f"Successfully binarized {prefix} set, "
             f"total time {total_time:.2f}s ({(total_time / 3600):.2f} h), saved to {builder.path}"
@@ -291,7 +291,7 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
                 'mel_spec': np.repeat(mel_spec, B, axis=0).astype("float32"),  # [B, C, T]
                 "non_lexical_target": np.repeat(non_lexical_target[np.newaxis, :], B, axis=0).astype("int32"),
                 "non_lexical_intervals": np.repeat(non_lexical_intervals[np.newaxis, :], B, axis=0).astype("int32"),
-                "wav_length": wav_length * B
+                "wav_length": wav_length
             }
 
         except Exception as e:
@@ -517,7 +517,7 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
                 'ph_time_raw': np.concatenate(([0], _item.ph_dur)).cumsum()[:-1].astype("float32"),  # [B, N]
                 'ph_seq_raw': _item.ph_seq,
                 'ph_seq': [[ph for ph in _item.ph_seq if self.vocab["vocab"][ph] != 0]] * B,
-                "wav_length": wav_length * B
+                "wav_length": np.repeat([wav_length], B, axis=0).astype("float32")
             }
 
         except Exception as e:

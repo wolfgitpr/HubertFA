@@ -125,6 +125,38 @@ class WordList(list):
                 self.append(ap)
                 self.sort(key=lambda w: w.start)
 
+    def fill_small_gaps(self, wav_length: float, gap_length: float = 0.1):
+        if self[0].start < 0:
+            self[0].start = 0
+
+        if self[0].start > 0:
+            if abs(self[0].start) < gap_length < self[0].dur:
+                self[0].move_start(0)
+
+        if self[-1].end >= wav_length - gap_length:
+            self[-1].move_end(wav_length)
+
+        for i in range(1, len(self)):
+            if 0 < self[i].start - self[i - 1].end <= gap_length:
+                self[i - 1].move_end(self[i].start)
+
+    def add_SP(self, wav_length, add_phone="SP"):
+        words_res = WordList()
+        if self[0].start > 0:
+            words_res.append(Word(0, self[0].start, add_phone, init_phoneme=True))
+
+        words_res.append(self[0])
+        for i in range(1, len(self)):
+            word = self[i]
+            if word.start > words_res[-1].end:
+                words_res.append(Word(words_res[-1].end, word.start, add_phone, init_phoneme=True))
+            words_res.append(word)
+
+        if self[-1].end < wav_length:
+            words_res.append(Word(self[-1].end, wav_length, add_phone, init_phoneme=True))
+        self.clear()
+        self.extend(words_res)
+
     @property
     def phonemes(self):
         phonemes = []

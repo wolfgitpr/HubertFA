@@ -9,7 +9,6 @@ import networks.g2p
 from tools.config_utils import check_configs, load_yaml
 from tools.encoder import UnitsEncoder
 from tools.export_tool import Exporter
-from tools.post_processing import post_processing
 from train import LitForcedAlignmentTask
 
 
@@ -53,13 +52,7 @@ def main(ckpt, encoder, folder, g2p, non_speech_phonemes, language, dictionary):
         model.unitsEncoder = UnitsEncoder(model.hubert_config, model.mel_spec_config, encoder, model.device)
     trainer = pl.Trainer(logger=False)
     predictions = trainer.predict(model, dataloaders=dataset, return_predictions=True)
-
-    predictions, log = post_processing(predictions)
-    if log:
-        print("error:", "\n".join(log))
-
-    Exporter(predictions).export(
-        ['textgrid'])
+    Exporter(predictions).export(['textgrid'])
     print("Output files are saved to the same folder as the input wav files.")
 
 

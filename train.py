@@ -49,7 +49,7 @@ class BaseTrainer(object):
         # define dataset
         num_workers = self.train_config['dataloader_workers']
         train_sampler = BinningAudioBatchSampler(
-            self.train_dataset.get_wav_lengths(),
+            self.train_dataset.get_aug_wav_lengths(),
             self.train_config["batch_max_length"],
             self.train_config["binning_length"],
             self.train_config["drop_last"],

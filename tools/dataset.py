@@ -6,15 +6,16 @@ import torch
 
 
 class IndexedDatasetBuilder:
-    def __init__(self, path, prefix):
+    def __init__(self, path, prefix, aug_num: int = 1):
         self.path = pathlib.Path(path) / f'{prefix}.data'
         self.prefix = prefix
         self.dset = h5py.File(self.path, 'w')
         self.h5_meta = self.dset.create_group("meta_data")
         self.items = self.dset.create_group("items")
+        self.aug_num = aug_num
 
         self.counter = 0
-        self.wav_lengths = []
+        self.aug_wav_lengths = []
 
     def add_item(self, item):
         if item is None:
@@ -26,10 +27,10 @@ class IndexedDatasetBuilder:
                 group.create_dataset(key, data=value, dtype=h5py.string_dtype())
             else:
                 group[key] = value
-        self.wav_lengths.append(item["wav_length"])
+        self.aug_wav_lengths.append(item["wav_length"][0] * self.aug_num)
 
     def finalize(self):
-        self.h5_meta.create_dataset("wav_lengths", data=np.array(self.wav_lengths, dtype=np.float32))
+        self.h5_meta.create_dataset("aug_wav_lengths", data=np.array(self.aug_wav_lengths, dtype=np.float32))
         self.dset.close()
 
 
@@ -37,17 +38,17 @@ class BaseDataset(torch.utils.data.Dataset):
     def __init__(self, binary_data_folder="data/binary", prefix="train"):
         # do not open hdf5 here
         self.h5py_file = None
-        self.wav_lengths = None
+        self.aug_wav_lengths = None
         self.augmentation_indexes = None
 
         self.binary_data_folder = binary_data_folder
         self.prefix = prefix
 
-    def get_wav_lengths(self):
-        uninitialized = self.wav_lengths is None
+    def get_aug_wav_lengths(self):
+        uninitialized = self.aug_wav_lengths is None
         if uninitialized:
             self._open_h5py_file()
-        ret = self.wav_lengths
+        ret = self.aug_wav_lengths
         if uninitialized:
             self._close_h5py_file()
         return ret
@@ -56,7 +57,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.h5py_file = h5py.File(
             str(pathlib.Path(self.binary_data_folder) / (self.prefix + ".data")), "r"
         )
-        self.wav_lengths = np.array(self.h5py_file["meta_data"]["wav_lengths"])
+        self.aug_wav_lengths = np.array(self.h5py_file["meta_data"]["aug_wav_lengths"])
 
     def _close_h5py_file(self):
         self.h5py_file.close()
@@ -111,7 +112,8 @@ class ForcedAlignmentDataset(BaseDataset):
         ph_time = np.array(item["ph_time"])
         ph_time_raw = np.array(item["ph_time_raw"])
         curves = np.array(item["curves"])
-        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, melspec, ph_time, name, ph_seq_raw, ph_time_raw, curves
+        wav_length = np.array(item["wav_length"])
+        return input_feature, ph_seq, ph_id_seq, ph_edge, ph_frame, ph_mask, melspec, ph_time, name, ph_seq_raw, ph_time_raw, curves, wav_length
 
 
 class BinningAudioBatchSampler(torch.utils.data.Sampler):
@@ -301,6 +303,7 @@ def forced_alignment_collate_fn(batch):
             torch.nn.functional.pad(
                 torch.as_tensor(item[11]), (0, max_len - item[11].shape[-1], 0, 0, 0, 0), mode='constant', value=0
             ),  # curves
+            torch.as_tensor(item[12])  # wav_length
         ))
     return (
         torch.cat([x[0] for x in padded_batch], dim=0),  # input_features (B, C, T)
@@ -316,5 +319,6 @@ def forced_alignment_collate_fn(batch):
         [x_element for x in padded_batch for x_element in x[8]],  # names
         [x[9] for x in padded_batch],  # ph_seq_raws,
         [x[10] for x in padded_batch],  # ph_time_raws
-        torch.cat([x[11] for x in padded_batch], dim=0)  # curves
+        torch.cat([x[11] for x in padded_batch], dim=0),  # curves
+        torch.cat([x[12] for x in padded_batch], dim=0)  # wav_length
     )

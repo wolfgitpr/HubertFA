@@ -30,7 +30,7 @@ class AlignmentDecoder:
     def decode(self,
                ph_frame_logits,  # [vocab_size, T]
                ph_edge_logits,  # [B, T]
-               wav_length: float | None,
+               wav_length: float,
                ph_seq: list[str],
                word_seq: list[str] = None,
                ph_idx_to_word_idx: list[int] = None,
@@ -48,9 +48,8 @@ class AlignmentDecoder:
             word_seq = ph_seq
             ph_idx_to_word_idx = np.arange(len(ph_seq))
 
-        if wav_length is not None:
-            num_frames = int((wav_length * self.sample_rate + 0.5) / self.hop_size)
-            ph_frame_logits, ph_edge_logits = ph_frame_logits[:, :num_frames], ph_edge_logits[:num_frames]
+        num_frames = int((wav_length * self.sample_rate + 0.5) / self.hop_size)
+        ph_frame_logits, ph_edge_logits = ph_frame_logits[:, :num_frames], ph_edge_logits[:num_frames]
 
         ph_frame_logits_adjusted = ph_frame_logits - ph_mask[:, np.newaxis]  # [vocab_size, 1]
         ph_frame_pred = softmax(ph_frame_logits_adjusted, axis=0).astype("float32")  # [vocab_size, T]
@@ -106,6 +105,7 @@ class AlignmentDecoder:
                 word.add_phoneme(phoneme)
                 words.append(word)
                 word_idx_last = word_idx
+        words.fill_small_gaps(wav_length)
         self.ph_seq_pred, self.ph_intervals_pred, self.pred_words = words.phonemes, words.intervals, words
         return words, total_confidence
 
@@ -119,7 +119,7 @@ class AlignmentDecoder:
             last_ph_idx = ph_idx
         ph_idx_frame = np.cumsum(ph_idx_frame)
         return plot_force_alignment_prob(
-            melspec=melspec, ph_seq=self.pred_words.phonemes, ph_intervals=ph_intervals_pred_int,
+            melspec=melspec[:, :self.T], ph_seq=self.pred_words.phonemes, ph_intervals=ph_intervals_pred_int,
             frame_confidence=self.frame_confidence, edge_prob=self.edge_prob,
             ph_frame_prob=self.ph_frame_pred[self.ph_seq_id, :], ph_frame_id_gt=ph_idx_frame,
             ph_time_gt=ph_time_gt_int
