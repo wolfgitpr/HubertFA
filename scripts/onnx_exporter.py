@@ -70,7 +70,7 @@ class UnitsAligner(torch.nn.Module):
         index = torch.clamp(torch.round(self.ratio * torch.arange(n_frames).to(self.device)).long(),
                             max=units.size(1) - 1)
         units_aligned = torch.gather(units, 1, index.unsqueeze(0).unsqueeze(-1).repeat([1, 1, units.size(-1)]))
-        return units_aligned.transpose(1, 2).half().float()  # [B, C, T]
+        return units_aligned.transpose(1, 2)  # [B, C, T]
 
 
 class Encoder(torch.nn.Module):
@@ -79,7 +79,7 @@ class Encoder(torch.nn.Module):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         if hubert_path is None:
-            hubert_path = hubert_config["model_path"]
+            hubert_path = hubert_config["onnx_path"]
         self.resampler = Resampler(hubert_config, melspec_config, device)
         self.curves_computer = PowerCurveComputer(melspec_config["window_size"], melspec_config["hop_size"])
         self.hubert = HubertModel.from_pretrained(hubert_path).to(device).eval()
@@ -90,7 +90,7 @@ class Encoder(torch.nn.Module):
         curves = self.curves_computer(waveform.squeeze(0), n_frames).unsqueeze(0).unsqueeze(0)
         units = self.hubert(waveform_16k)["last_hidden_state"]
         units_aligned = self.aligner(units, n_frames)
-        return units_aligned, curves
+        return units_aligned.half().float(), curves.half().float()
 
 
 class PredictModel(torch.nn.Module):
@@ -170,7 +170,7 @@ def export_predict_model(onnx_folder: pathlib.Path, nll_ckpt_path: pathlib.Path,
             json.dump(export_config, f, ensure_ascii=False, indent=4)
 
         with open(onnx_folder / 'config.json', 'w', encoding='utf-8') as f:
-            json.dump({'hubert_config': _hubert_config, 'melspec_config': _melspec_config},
+            json.dump({'hubert_config': _hubert_config, 'mel_spec_config': _melspec_config},
                       f, ensure_ascii=False, indent=4)
 
         for txt in fa_ckpt_path.parent.rglob('*.txt'):
@@ -214,17 +214,17 @@ def merge_model(merged_path, encoder_path, predict_path):
 
 @torch.no_grad()
 @click.command(help='')
-@click.option('--nll_ckpt_path', required=True, type=str, help='Path to the checkpoint')
-@click.option('--fa_ckpt_path', required=True, type=str, help='Path to the checkpoint')
+@click.option('--nll_ckpt_path', '-nll', required=True, type=str, help='Path to the checkpoint')
+@click.option('--fa_ckpt_path', '-fa', required=True, type=str, help='Path to the checkpoint')
 @click.option("--hubert_path", "-h", default=None, type=str, help="path to the encoder model")
-@click.option('--onnx_folder', required=True, metavar='DIR', help='Path to the onnx')
-def export(nll_ckpt_path, fa_ckpt_path, hubert_path, onnx_folder):
+@click.option('--out_folder', '-o', required=True, metavar='DIR', help='Path to the onnx')
+def export(nll_ckpt_path, fa_ckpt_path, hubert_path, out_folder):
     assert nll_ckpt_path is not None, "Checkpoint directory (nll_ckpt_path) cannot be None"
     assert fa_ckpt_path is not None, "Checkpoint directory (fa_ckpt_path) cannot be None"
 
     nll_ckpt_path = pathlib.Path(nll_ckpt_path)
     fa_ckpt_path = pathlib.Path(fa_ckpt_path)
-    onnx_folder = pathlib.Path(onnx_folder)
+    out_folder = pathlib.Path(out_folder)
 
     assert nll_ckpt_path.exists(), f"Checkpoint path does not exist: {nll_ckpt_path}"
     assert (
@@ -234,8 +234,8 @@ def export(nll_ckpt_path, fa_ckpt_path, hubert_path, onnx_folder):
     assert (
             fa_ckpt_path.parent / "config.yaml").exists(), f"Checkpoint folder {fa_ckpt_path.parent}does not exist: config.yaml"
 
-    onnx_folder.mkdir(parents=True, exist_ok=True)
-    onnx_path = str(onnx_folder / "model.onnx")
+    out_folder.mkdir(parents=True, exist_ok=True)
+    onnx_path = str(out_folder / "model.onnx")
     assert not os.path.exists(onnx_path), f"Error: The file '{onnx_path}' already exists."
 
     nll_config = load_yaml(nll_ckpt_path.parent / "config.yaml")
@@ -246,13 +246,13 @@ def export(nll_ckpt_path, fa_ckpt_path, hubert_path, onnx_folder):
     assert hubert_config == fa_config['hubert_config'], f"nll and fa model must have same hubert config."
     assert mel_spec_config == fa_config['mel_spec_config'], f"nll and fa model must have same mel spec config."
 
-    encoder_path = export_encoder(onnx_folder, hubert_config, mel_spec_config, hubert_path=hubert_path)
-    predict_path = export_predict_model(onnx_folder, nll_ckpt_path, fa_ckpt_path, hubert_config, mel_spec_config)
+    encoder_path = export_encoder(out_folder, hubert_config, mel_spec_config, hubert_path=hubert_path)
+    predict_path = export_predict_model(out_folder, nll_ckpt_path, fa_ckpt_path, hubert_config, mel_spec_config)
 
-    merged_path = str(onnx_folder / "model.onnx")
+    merged_path = str(out_folder / "model.onnx")
     merge_model(merged_path, encoder_path, predict_path)
 
-    with open(onnx_folder / "VERSION", "w") as f:
+    with open(out_folder / "VERSION", "w") as f:
         f.write(str(ONNX_EXPORT_VERSION))
 
 

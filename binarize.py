@@ -307,7 +307,6 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
 class ForcedAlignmentBinarizer(BaseBinarizer):
     def __init__(self, binary_config):
         super().__init__(binary_config)
-        self.units_cache = self.binary_config['units_cache']
         self.extra_phonemes = self.binary_config['extra_phonemes']
         self.silent_phonemes = self.binary_config['silent_phonemes']
 
@@ -475,7 +474,7 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
                 print(f"Item {wav_path} has a length of {wav_length}s, which is too long, skip it.")
                 return None
 
-            curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [B, C, T]
+            curves = get_curves(waveform, n_frames, self.window_size, self.hop_size)  # [B, C, T]
 
             if len(_item.ph_id_seq) == 0 or len(_item.ph_dur) != len(_item.ph_id_seq):
                 return None
@@ -486,16 +485,9 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
                 print(f"Skipping {wav_path}, make ph data failed.")
                 return None
 
-            npy_loaded = False
-            # units encode
-            npy_path = pathlib.Path(wav_path).with_suffix(".npy")
-            if npy_path.exists() and self.units_cache and self.aug_num == 1:
-                units = torch.as_tensor(np.load(npy_path))
-                npy_loaded = True if units.shape[1] > 0 else False
-            if not npy_loaded:
-                units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size,
-                                                  aug=self.binary_config['augmentation_args']['enabled'] and train,
-                                                  aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
+            units = self.unitsEncoder.forward(waveform.unsqueeze(0), self.sample_rate, self.hop_size,
+                                              aug=self.binary_config['augmentation_args']['enabled'] and train,
+                                              aug_args=self.binary_config['augmentation_args'])  # [B, T, C]
             mel_spec = self.get_mel_spec(waveform).cpu().numpy() if not train else np.array([[[0]]])  # [B, C, T]
 
             B, T, C = units.shape

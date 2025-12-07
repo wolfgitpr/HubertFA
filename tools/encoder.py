@@ -16,9 +16,9 @@ class UnitsEncoder(torch.nn.Module):
         self.device = device
         self.mel_config = mel_config
 
-        self.encoder = hubert_config["encoder"]
+        self.encoder = hubert_config['encoder']
         if encoder_ckpt is None:
-            encoder_ckpt = hubert_config.get("model_path", None)
+            encoder_ckpt = hubert_config['model_path']
 
         is_loaded_encoder = False
         if self.encoder == 'cn_hubert':

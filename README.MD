@@ -61,7 +61,7 @@
    onnx推理
 
     ```bash
-    python onnx_infer.py --onnx_folder xxx --folder xxx_wav --language zh ...
+    python onnx_infer.py --model_folder xxx --folder xxx_wav --language zh ...
     ```
 
    参数：
@@ -101,24 +101,13 @@
 
    ```
    data/
-   ├── full_label/  # 完整标注
-   │   └── singer/
-   │       ├── wavs/*.wav
-   │       └── transcriptions.csv  # 需含`ph_seq`和`ph_dur`列
-   ├── weak_label/  # 弱标注（无时长） 
-   │   └── singer/
-   │       ├── wavs/*.wav
-   │       └── transcriptions.csv  # 需含`ph_seq`列
-   └── no_label/    # 无标注，仅wav
+   └── full_label/  # 完整标注
+       └── singer/
+           ├── wavs/*.wav
+           └── transcriptions.csv  # 需含`ph_seq`和`ph_dur`列
    ```
 
    关于`transcriptions.csv`的格式，参见：https://github.com/qiuqiao/SOFA/discussions/5
-
-   其中：
-
-   `transcriptions.csv`只需要和`wavs`文件夹的相对位置正确即可；
-
-   `weak_label`中的`transcriptions.csv`无需拥有`ph_dur`这一个`column`；
 
 2. 修改配置
 
@@ -133,25 +122,13 @@
 
    [数据集配置](configs/datasets_config.yaml)
 
-   [预处理配置](configs/binarize_config.yaml)，[datasets_config](configs/datasets_config.yaml)
+   [nll配置](configs/non_lexical_labeler.yaml)
 
-   [训练配置](configs/train_config.yaml)
+   [fa配置](configs/force_alignment.yaml)
 
 3. 按需修改`binarize_config.yaml`，然后执行`python binarize.py --config/-c configs/binarize_config.yaml`；
 4. 训练`python train.py --config/-c configs/train_config.yaml`
 5. 训练可视化：`tensorboard --logdir=ckpt/`。
-
-## 高级功能
-
-录音文本经过`g2p`模块转化为音素序列后，输入模型进行对齐。
-
-例如，默认情况下使用`DictionaryG2P`模块和`opencpop-extension`词典时，加入录音文本的内容是：
-`gan shou ting zai wo fa duan de zhi jian`，`g2p`模块根据词典转化为音素序列
-`g an sh ou t ing z ai w o f a d uan d e zh ir j ian`。其他`g2p`
-模块的使用方法，参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)。
-
-- 使用自定义的g2p，而不是使用词典
-    - 参见[g2p模块使用说明](networks/g2p/readme_g2p_zh.md)
 
 ## 评估（适用于模型开发者）
 
@@ -168,7 +145,7 @@
 运行以下命令：
 
 ```bash
-python evaluate.py <PRED_DIR> <TARGET_DIR> -r
+python scripts/evaluate.py <PRED_DIR> <TARGET_DIR> -r
 ```
 
 其中 `PRED_DIR` 是包含所有预测标注的目录，`TARGET_DIR` 是包含所有目标标注的目录。

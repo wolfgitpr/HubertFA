@@ -26,7 +26,7 @@ class BaseG2P:
         assert all(
             ph_seq[i] != "SP" or ph_seq[i + 1] != "SP" for i in range(len(ph_seq) - 1)
         )
-        ph_seq = [f"{self.language}/{ph}" if self.language is not None else ph for ph in ph_seq]
+        ph_seq = [f"{self.language}/{ph}" if self.language and ph != "SP" is not None else ph for ph in ph_seq]
         return ph_seq, word_seq, ph_idx_to_word_idx
 
 

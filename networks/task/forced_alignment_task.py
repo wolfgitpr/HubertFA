@@ -13,7 +13,6 @@ from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
-from tools.binarize_util import load_wav, get_curves
 from tools.decoder import AlignmentDecoder
 from tools.encoder import UnitsEncoder
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
@@ -149,32 +148,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
     def on_predict_start(self):
         if self.unitsEncoder is None:
             self.unitsEncoder = UnitsEncoder(self.hubert_config, self.mel_spec_config, device=self.device)
-
-    def predict_step(self, batch, batch_idx):
-        wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language = batch
-        ph_seq = [f"{language}/{ph}" if ph not in self.silent_phonemes and self.language_prefix else ph for ph in
-                  ph_seq]
-        waveform, wav_length, n_frames = load_wav(wav_path, self.sample_rate, self.hop_size,
-                                                  self.device)  # (L,) seconds
-        input_feature = self.unitsEncoder.forward(waveform.unsqueeze(0), self.mel_spec_config["sample_rate"],
-                                                  self.mel_spec_config["hop_size"])  # [B, T, C]
-        curves = get_curves(waveform, n_frames, self.window_size, self.hop_size, device=self.device)  # [B, C, T]
-
-        with torch.no_grad():
-            (
-                ph_frame_logits,  # (B, C, T)
-                ph_edge_logits,  # (B, T)
-                ctc_logits,  # (B, C, T)
-            ) = self.forward(input_feature, curves)
-
-        words, _ = self.decoder.decode(
-            ph_frame_logits.float().cpu().numpy(),  # (B, C, T)
-            ph_edge_logits.float().cpu().numpy(),
-            wav_length, ph_seq, word_seq, ph_idx_to_word_idx
-        )
-        words.clear_language_prefix()
-        words.add_SP(wav_length)
-        return wav_path, wav_length, words
 
     def _get_consistency_loss(
             self,

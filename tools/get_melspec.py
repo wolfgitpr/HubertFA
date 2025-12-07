@@ -2,8 +2,6 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 
-melspec_transform = None
-
 
 class MelSpectrogram(torch.nn.Module):
     def __init__(
