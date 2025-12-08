@@ -1,9 +1,9 @@
 import torch.nn as nn
 
 
-class BaseDowmSampling(nn.Module):
+class BaseDownSampling(nn.Module):
     def __init__(self, input_dims, output_dims, down_sampling_factor=2):
-        super(BaseDowmSampling, self).__init__()
+        super(BaseDownSampling, self).__init__()
 
     def forward(self, x):
         raise NotImplementedError

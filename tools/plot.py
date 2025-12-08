@@ -1,22 +1,18 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-plt.rcParams['font.sans-serif'] = ['SimSun']
 
-
-def plot_prob_to_image(melspec,
-                       ph_seq,
-                       ph_intervals,
-                       frame_confidence,
-                       cvnt_prob,
-                       ph_time_gt=None,
-                       label=None, v_min=-8, v_max=2, title=None,
-                       bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
-    label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
+def plot_force_alignment_prob(melspec,
+                              ph_seq,
+                              ph_intervals,
+                              frame_confidence,
+                              edge_prob,
+                              ph_frame_prob,
+                              ph_frame_id_gt,
+                              ph_time_gt=None,
+                              v_min=-8, v_max=2
+                              ):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
-
-    if title:
-        fig.suptitle(title, fontsize=14)
 
     ph_seq = [i.split("/")[-1] for i in ph_seq]
     T = melspec.shape[-1]
@@ -81,15 +77,46 @@ def plot_prob_to_image(melspec,
         ncol=1
     )
 
-    melspec = melspec.T
-    n_frames = melspec.shape[0]
+    ax1.set_xlabel('Frame Index')
+    ax1.set_ylabel('Mel Bin')
 
-    time_axis = np.arange(n_frames) * frame_duration
-    time_edges = np.linspace(0, n_frames * frame_duration, n_frames + 1)
+    ax2.imshow(
+        ph_frame_prob,
+        origin="lower",
+        aspect="auto",
+        interpolation="nearest"
+    )
 
-    scaled_prob = cvnt_prob * melspec.shape[1]
+    ax2.set_xlabel('Frame Index')
+    ax2.set_ylabel('Probability')
 
-    cumulative = np.zeros(n_frames)
+    ax2.plot(x, ph_frame_id_gt, color="red", linewidth=1.5)
+    ax2.plot(x, edge_prob * ph_frame_prob.shape[0], color="black", linewidth=1)
+    ax2.fill_between(x, edge_prob * ph_frame_prob.shape[0], color="black", alpha=0.3)
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.2)
+    return fig
+
+
+def plot_non_lexical_phonemes(mel_spec,  # [C,T]
+                              cvnt_prob,
+                              label=None, v_min=-8, v_max=2,
+                              bar_alpha=0.7, pcolor_alpha=0.4, frame_duration=None):
+    label = label or [f'Tensor {i}' for i in range(len(cvnt_prob))]
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [1, 1]})
+
+    if mel_spec.ndim == 3:
+        mel_spec = mel_spec.squeeze(0)
+
+    C, T = mel_spec.shape
+    ax1.pcolormesh(np.arange(T + 1), np.arange(C + 1), mel_spec, shading='flat', vmin=v_min, vmax=v_max)
+
+    time_axis = np.arange(T) * frame_duration
+    time_edges = np.linspace(0, T * frame_duration, T + 1)
+
+    scaled_prob = cvnt_prob * C
+    cumulative = np.zeros(T)
     for i in range(len(scaled_prob)):
         if i == 0:
             cumulative += scaled_prob[0]
@@ -106,8 +133,8 @@ def plot_prob_to_image(melspec,
 
     ax2.pcolormesh(
         time_edges,
-        np.arange(melspec.shape[1] + 1),
-        melspec.T,
+        np.arange(C + 1),
+        mel_spec,
         vmin=v_min,
         vmax=v_max,
         alpha=pcolor_alpha,

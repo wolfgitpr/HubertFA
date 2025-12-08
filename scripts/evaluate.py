@@ -1,13 +1,15 @@
 import json
 import pathlib
 import warnings
+from pathlib import Path
 from typing import Dict
+from typing import Union
 
 import click
+import textgrid as tg
 import tqdm
 from textgrid import PointTier, Point
 
-from tools import label
 from tools.metrics import (
     CustomPointTier,
     BoundaryEditRatio,
@@ -18,7 +20,33 @@ from tools.metrics import (
 )
 
 
-def remove_ignored_phonemes(point_tier: PointTier, ignored_phonemes_list: list[str] = []):
+def interval_tier_to_point_tier(tier: tg.IntervalTier) -> tg.PointTier:
+    point_tier = tg.PointTier(name=tier.name)
+    point_tier.add(0.0, "")
+    for interval in tier:
+        if point_tier[-1].mark == "" and point_tier[-1].time == interval.minTime:
+            point_tier[-1].mark = interval.mark
+        else:
+            point_tier.add(interval.minTime, interval.mark)
+        point_tier.add(interval.maxTime, "")
+
+    return point_tier
+
+
+def textgrid_from_file(textgrid_path: Union[str, Path]) -> tg.TextGrid:
+    """Read a TextGrid file and return a TextGrid object."""
+    _textgrid = tg.TextGrid()
+    _textgrid.read(textgrid_path, encoding="utf-8")
+    for idx, tier in enumerate(_textgrid):
+        if isinstance(tier, tg.IntervalTier):
+            _textgrid.tiers[idx] = interval_tier_to_point_tier(tier)
+
+    return _textgrid
+
+
+def remove_ignored_phonemes(point_tier: PointTier, ignored_phonemes_list=None):
+    if ignored_phonemes_list is None:
+        ignored_phonemes_list = []
     res_tier = CustomPointTier(name=point_tier.name)
     for point in point_tier:
         if point.mark not in ignored_phonemes_list:
@@ -103,8 +131,8 @@ def main(pred: str, target: str, recursive: bool, strict: bool, ignore: str, fra
             )
             continue
 
-        pred_tier = label.textgrid_from_file(pred_file)[-1]
-        target_tier = label.textgrid_from_file(target_file)[-1]
+        pred_tier = textgrid_from_file(pred_file)[-1]
+        target_tier = textgrid_from_file(target_file)[-1]
 
         # Remove ignored phonemes
         pred_tier = remove_ignored_phonemes(pred_tier, ignored)

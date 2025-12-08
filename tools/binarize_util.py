@@ -15,32 +15,6 @@ def load_wav(path, target_sr, hop_size, device='cpu'):
     return waveform.to(device), len(waveform) / target_sr, len(waveform) // hop_size + 1
 
 
-def compute_power_curve(waveform, n_frames, window_size=1024, hop_size=512, device='cpu'):
-    wav_size = len(waveform)
-    if window_size % 2 == 0:
-        window_size += 1
-
-    half_window = window_size // 2
-
-    frame_centers = torch.arange(0, n_frames, device=device) * hop_size + hop_size // 2
-
-    window_starts = (frame_centers - half_window).clamp(min=0)
-
-    indices = torch.arange(window_size, device=device).unsqueeze(0)  # [1, window_size]
-    window_indices = window_starts.unsqueeze(1) + indices  # [n_frames, window_size]
-
-    window_indices = torch.clamp(window_indices, 0, wav_size - 1)
-    window_audio = waveform[window_indices.long()]  # [n_frames, window_size]
-
-    valid_mask = (window_indices >= 0) & (window_indices < wav_size)
-    squared_sum = (window_audio ** 2).sum(dim=1)
-    valid_count = valid_mask.sum(dim=1).float()
-
-    rms = torch.sqrt(squared_sum / valid_count.clamp(min=1))
-
-    return 20 * torch.log10(rms.clamp(min=1e-10) / 1.0)  # power_db [T]
-
-
 class PowerCurveComputer(nn.Module):
     def __init__(self, window_size=1024, hop_size=512):
         super().__init__()
@@ -67,7 +41,7 @@ class PowerCurveComputer(nn.Module):
         return 20 * torch.log10(rms.clamp(min=1e-10) / 1.0)  # power_db [T]
 
 
-def get_curves(waveform, n_frames, window_size=1024, hop_size=512, device='cpu'):
+def get_curves(waveform, n_frames, window_size=1024, hop_size=512):
     global power_computer
     if power_computer is None:
         power_computer = PowerCurveComputer(window_size, hop_size)

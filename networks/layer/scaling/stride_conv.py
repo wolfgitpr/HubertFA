@@ -1,12 +1,13 @@
 import torch.nn as nn
+import torch.nn.functional as F
 
-from networks.layer.scaling.base import BaseDowmSampling, BaseUpSampling
+from networks.layer.scaling.base import BaseDownSampling, BaseUpSampling
 
 
-class DownSampling(BaseDowmSampling):
+class DownSampling(BaseDownSampling):
     def __init__(self, input_dims: int, output_dims: int, down_sampling_factor: int = 2):
         super(DownSampling, self).__init__(
-            input_dims, output_dims, down_sampling_factor=2
+            input_dims, output_dims, down_sampling_factor
         )
 
         self.input_dims = input_dims
@@ -20,17 +21,16 @@ class DownSampling(BaseDowmSampling):
             stride=down_sampling_factor,
         )
 
-    def forward(self, x):
-        x = x.transpose(1, 2)
+    def forward(self, x):  # x: [B, C, T]
         T = x.shape[-1]
         padding_len = (-T) % self.down_sampling_factor
-        x = nn.functional.pad(x, (0, padding_len))
-        return self.conv(x).transpose(1, 2)
+        x = F.pad(x, (0, padding_len))
+        return self.conv(x)  # [B, C_out, T/down_factor]
 
 
 class UpSampling(BaseUpSampling):
     def __init__(self, input_dims: int, output_dims: int, up_sampling_factor: int = 2):
-        super(UpSampling, self).__init__(input_dims, output_dims, up_sampling_factor=2)
+        super(UpSampling, self).__init__(input_dims, output_dims, up_sampling_factor)
 
         self.input_dims = input_dims
         self.output_dims = output_dims
@@ -43,5 +43,5 @@ class UpSampling(BaseUpSampling):
             stride=up_sampling_factor,
         )
 
-    def forward(self, x):
-        return self.conv(x.transpose(1, 2)).transpose(1, 2)
+    def forward(self, x):  # x: [B, C, T]
+        return self.conv(x)  # [B, C_out, T*up_factor]

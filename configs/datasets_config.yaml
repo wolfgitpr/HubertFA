@@ -1,20 +1,12 @@
 # raw_data_dir文件夹下包含transcriptions.csv（diffsinger格式）和wavs文件夹
 datasets:
-  # full 包括 name,ph_seq,ph_dur 列
-  - raw_data_dir: path/to/spk_1/raw
+  - raw_data_dir: data/full_label/male1_byBaiShuo/raw
     label_type: full
     language: zh
     test_prefixes:
-      - xxx
-  # weak 包括 name,ph_seq 列
-  - raw_data_dir: path/to/spk_2/raw
-    label_type: weak
-    language: ja
-    test_prefixes:
-      - xxx
-  # evaluate 同full，建议放unseen spk用于评测
-  - raw_data_dir: path/to/spk_2/raw
+      - B3_o_n_o_o_a_o_i_o
+  - raw_data_dir: data/full_label/female1_byBaiShuo/raw
     label_type: evaluate
-    language: yue
+    language: zh
     test_prefixes:
-      - xxx
+      - B3_o_n_o_o_a_o_i_o

@@ -47,14 +47,15 @@ class conform_conv(nn.Module):
                                          bias=bias)
         self.drop = nn.Dropout(DropoutL) if DropoutL > 0. else nn.Identity()
 
-    def forward(self, x):
-        x = x.transpose(1, 2)
+    def forward(self,
+                x  # [B, C, T]
+                ):
         x = self.act1(self.pointwise_conv1(x))
         x = self.depthwise_conv(x)
         x = self.norm(x)
         x = self.act2(x)
         x = self.pointwise_conv2(x)
-        return self.drop(x).transpose(1, 2)
+        return self.drop(x)  # [B, C, T]
 
 
 class DilatedGatedConv(nn.Module):
@@ -73,14 +74,12 @@ class DilatedGatedConv(nn.Module):
         self.glu = GLU(dim=1)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    def forward(self, x):
-        x = x.transpose(1, 2)  # [B, C, T]
-
+    def forward(self,
+                x  # [B, C, T]
+                ):
         conv_out = self.depth_conv(x)
         conv_out = self.point_conv(conv_out)
         conv_out = self.norm(conv_out)
-
         gated_out = self.glu(conv_out)
         gated_out = self.dropout(gated_out)
-
-        return gated_out.transpose(1, 2)  # [B, T, C]
+        return gated_out  # [B, C, T]
