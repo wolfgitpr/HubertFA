@@ -3,33 +3,37 @@ model_name: 1201_nll
 float32_matmul_precision: high
 random_seed: 123456
 
-non_lexical_phonemes: # 没有词汇意义的，无需标注、自动识别的音素，如AP(呼吸)、EP(尾息)等
+# Phonemes that have no lexical meaning, do not require annotation, and are automatically recognized,
+# such as AP (breath), EP (tail breath), etc
+non_lexical_phonemes:
   - AP
   - EP
 
-datasets_config_paths: # 数据集
+datasets_config_paths: # datasets
   - configs/datasets_public.yaml
   - configs/datasets_evaluate.yaml
 
-binary_folder: data/binary_nll # 预处理结果文件夹
-valid_set_size: 20 # valid_set_size大于0时，按数量随机抽取、否则使用datasets内的验证集
-max_length: 45 # 单条音频最大时长
+binary_folder: data/binary_nll # Preprocessing Results Folder
+valid_set_size: 20 # When valid_set_Size is greater than 0, randomly select by quantity; otherwise, use the validation set in the dataset
+max_length: 45 # Maximum duration of a single audio stream
 
-multiprocess_works: 0 # 预处理线程数和暂存队列大小，数据量过少（5h以内）不建议开启。每6-8g内存、6g显存可开1个worker。
-multiprocess_max_size: 200  # size * num_works，过大需保证内存足够
-multiprocess_start_size: 100  # 最小启动数据量
+# It is not recommended to enable the number of preprocessing threads and the size of the temporary queue if the data volume is too small (within 5 hours).
+# Every 6-8g of memory and 6g of video memory can open one worker.
+multiprocess_works: 0
+multiprocess_max_size: 200  # size * num_works. Too large to ensure sufficient memory
+multiprocess_start_size: 100  # Minimum startup data volume
 
-# 训练数据加载进程数
+# Number of training data loading processes
 dataloader_workers: 2
 dataloader_prefetch_factor: 2
 batch_max_length: 200
 binning_length: 1000
 drop_last: False
 
-num_valid_plots: 20 # val、evaluate各项最大绘制数量
-draw_evaluate: True # 绘制evaluate
+num_valid_plots: 20 # Maximum drawing quantity for val and evaluate items
+draw_evaluate: True
 
-augmentation_args: # 数据增强，预处理阶段生效
+augmentation_args: # Data augmentation, effective in the preprocessing phase
   enabled: false
   random_pitch_shifting:
     range: [ -5., 5. ]
@@ -66,13 +70,13 @@ accelerator: auto
 devices: auto # num_devices
 precision: bf16-mixed # bf16-mixed , 32-true
 gradient_clip_val: 0.5
-gradient_clip_algorithm: norm #value
-val_check_interval: 1000 # 0.25
+gradient_clip_algorithm: norm
+val_check_interval: 1000
 
 save_top_k: 5
 save_every_steps: 1000
 
-# 一般情况不改
+# Normally not changed
 hubert_config:
   encoder: cn_hubert
   model_path: dependencies/chinese-hubert-base

@@ -1,161 +1,217 @@
-# HubertFA: 基于Hubert的强制对齐工具
+# HubertFA: A forced alignment tool based on Hubert
 
 ![example](example.png)
 
-## 简介
+## Introduction
 
-专为歌声设计的轻量化强制对齐工具，兼容非歌声对齐。
+A lightweight forced alignment tool specifically designed for singing voice, compatible with non-singing voice
+alignment.
 
-基于[SOFA](https://github.com/qiuqiao/SOFA)和[FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler)
-优化，支持对齐音素及自动识别非发声音素（如呼吸）。
+Based on [SOFA](https://github.com/qiuqiao/SOFA)
+and [FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler).
 
-[模型分享说明](https://github.com/wolfgitpr/HubertFA/discussions/2)
+Optimization, support for aligned phonemes and automatic recognition of non-articulate phonemes (such as breathing).
 
-## 快速开始
+[Model sharing instructions](https://github.com/wolfgitpr/HubertFA/discussions/2).
 
-### 环境配置
+## Quick Start
 
-1. 克隆仓库并安装依赖：
+### Environment Configuration
+
+1. Clone git and create conda environment:
    ```bash
    git clone https://gitclone.com/github.com/wolfgitpr/HubertFA.git
    conda create -n HFA python=3.10 -y
    conda activate HFA
    ```
 
-2. 安装其他python库：
+2. Install python dependence:
 
-   仅推理使用：
+   Only for onnx infer:
 
     ```bash
     pip install -r requirements_onnx.txt
     ```
 
-   训练：
+   Train:
 
-   去[pytorch官网](https://pytorch.org/get-started/locally/)安装torch
+   Please go to [PyTorch official website](https://pytorch.org/get-started/locally/) to install torch with a version
+   lower than 2.9.
 
     ```bash
     pip install -r requirements.txt
     ```
 
-### 推理
+### Infer
 
-1. 下载模型文件。你可以在本仓库[discussion](https://github.com/wolfgitpr/HubertFA/discussions)中找到onnx模型。
-2. --language指定语种(zh ja en yue)，--dictionary指定词典（可选）。默认字典为`opencpop-extension.txt`
-3. 准备需要强制对齐的数据，放入一个文件夹中（默认放在`/segments`文件夹），格式如下
+1. Download the model file. You can find the ONNX model in this
+   repository's [release](https://github.com/wolfgitpr/HubertFA/releases)
+   or [discussion](https://github.com/wolfgitpr/HubertFA/discussions).
+2. Prepare the data that needs to be forcibly aligned and place it in a folder (default to the '/segments' folder), in
+   the following format.
 
    ```
       segments/
       ├── singer1/
       │   ├── audio1.wav
-      │   ├── audio1.lab  # 录音文本（拼音/音素，空格隔开），如"gan shou ting"
+      │   ├── audio1.lab  # Recorded text (pinyin/phoneme, separated by spaces), such as "gan shou ting".
       └── singer2/
           ├── audio2.wav
           └── audio2.lab
    ```
 
-   保证`.wav`文件和对应的`.lab`在同一个文件夹即可。
+   Ensure that the wav file and it's corresponding. lab file are in the same folder.
 
-4. 命令行推理
+3. Command line reasoning
 
-   onnx推理
-
-    ```bash
-    python onnx_infer.py --model_folder xxx --folder xxx_wav --language zh ...
-    ```
-
-   参数：
-    - `--onnx_folder`：模型权重文件夹；
-    - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
-    - `--language`：指定语种，zh ja en yue（默认为`zh`）；
-    - `--non_speech_phonemes`：自动推理非发声音素（默认为`AP`，可选`AP,EP`）
-    - `--pad_times`：音频前加入空白进行推理，次数；
-    - `--pad_length`：空白最长的长度；
-    - `--dictionary`：（可选）字典文件；
-
-   ckpt推理（开发者）
+   onnx infer (recommend)
 
     ```bash
-    python infer.py --ckpt xxx.ckpt --folder xxx_wav -language zh ...
+    python onnx_infer.py --onnx_path xxx --wav_folder xxx_wav --language zh ...
     ```
 
-   参数：
-    - `--ckpt`：模型权重文件夹；
-    - `--folder`：存放待对齐数据的文件夹（默认为`segments`）；
-    - `--language`：指定语种，zh ja en yue（默认为`zh`）；
-    - `--non_speech_phonemes`：自动推理非发声音素（默认为`AP`，可选`AP,EP`）
-    - `--encoder`：（可选）音频编码器的路径，如Chinese hubert的文件夹
-    - `--pad_times`：音频前加入空白进行推理，次数；
-    - `--pad_length`：空白最长的长度；
-    - `--dictionary`：（可选）字典文件；
+   args:
+    - `--onnx_path` / `-m`: Path to Onnx models.
+    - `--wav_folder` / `-wf`: Input folder path. (default: `segments`)
+    - `--out_path` / `-o`: Path to the output label.
+    - `--language` / `-l`: Designated language, zh ja en yue. (default: `zh`)
+    - `--non_speech_phonemes` / `-np`: Non speech phonemes. (default: `AP`, optional `AP,EP`)
+    - `--pad_times` / `-pt`: The number of times to pad blank audio before reasoning. (default: `1`)
+    - `--pad_length` / `-pl`: The max length of blank audio on the pad before inference. (default: `5`)
+    - `--dictionary` / `-d`: Custom dictionary path.
 
-5. 获取最终标注
+   ckpt infer (developer)
 
-   最终的标注保存在文件夹中，文件夹的名称是你选择的标注格式，这个文件夹的位置和推理所用的wav文件处于同一个文件夹中。
+    ```bash
+    python infer.py --nll_path xxx --fa_path xxx --wav_folder xxx_wav --language zh ...
+    ```
 
-### 训练
+   args:
+    - `--nll_path` / `-nll`: Path to nll models.
+    - `--fa_path` / `-fa`: Path to fa models.
+    - `--encoder` / `-e`: Path to the encoder (hubert) model. (optional)
+    - `--wav_folder` / `-wf`: Input folder path. (default: `segments`)
+    - `--g2p` / `-g`: G2P class name. (default: `dictionary`)
+    - `--non_lexical_phonemes` / `-np`: Non speech phonemes. (default: `AP`, optional `AP,EP`)
+    - `--language` / `-l`: Dictionary language. (default: `zh`)
+    - `--dictionary` / `-d`: Custom dictionary path.
+    - `--pad_times` / `-pt`: The number of times to pad blank audio before reasoning. (default: `1`)
+    - `--pad_length` / `-pl`: The max length of blank audio on the pad before inference. (default: `5`)
 
-1. 参照上文进行环境配置。
+4. Obtain the final annotation
 
-   把训练数据按以下格式放入`data`文件夹(也可按个人习惯)：
+   The final annotation is saved in a folder named after the annotation format you have chosen, which is located in the
+   same folder as the WAV file used for inference.
+
+### Train
+
+The training of HubertFA is divided into two independent stages:
+
+NLL (Non_Lexical Label) model: recognizes non_lexical phonemes (such as breathing sounds) without the need for phoneme
+labeling during inference.
+
+FA (forced alignment) model: Aligns phonemes with audio, requiring phoneme annotation during inference.
+
+1. Refer to the previous text for environment configuration.
+
+   Put the training data into the 'data' folder in the following format (or according to personal habits):
 
    ```
    data/
-   └── full_label/  # 完整标注
+   └── full_label/
        └── singer/
            ├── wavs/*.wav
-           └── transcriptions.csv  # 需含`ph_seq`和`ph_dur`列
+           └── transcriptions.csv  # Contains columns 'name', 'ph_deq' and 'ph_rur'.
    ```
 
-   关于`transcriptions.csv`的格式，参见：https://github.com/qiuqiao/SOFA/discussions/5
+   ```
+   name,ph_seq,ph_dur
+   myaudio_1,b ie r ong h ua l e y En l ei AP SP,0.07859 0.40293 0.09818 0.41515 0.11034 0.3453 0.15223 0.35642 0.0937 0.24446 0.09266 0.34733 0.24899 0.2778780726
+   myaudio_2,SP sh uo g an AP SP j iu g an AP z ai d ao x ia zh ir q ian zh ir q iu h uo g e t ong k uai AP SP,0.3567800454 0.18395 0.54211 0.09266 0.63328 0.24868 0.05809 0.11525 0.56118 0.08851 0.64217 0.22428 0.11764 0.18132 0.06359 0.16275 0.07434 0.13661 0.07883 0.19637 0.10148 0.26796 0.04816 0.15877 0.07283 0.18856 0.11828 0.21115 0.09586 0.13446 0.11893 0.35909 0.06789 0.41733 0.16352 0.2607256236
+   ```
 
-2. 修改配置
+    + name is the filename of the WAV file without the extension.
 
-   使用 `make_data_config.py` 自动扫描数据文件夹生成配置文件：
+    + ph_seq is the phoneme annotation sequence for the WAV file, separated by spaces. Any phonemes listed in
+      ignored_phonemes within the configs/binarize_config.yaml will be considered as SP.
+
+    + ph_dur corresponds to the duration sequence for each phoneme in the sequence, measured in seconds, and also
+      separated by spaces.
+
+2. modify configuration
+
+   Automatically scan the data folder to generate a configuration file using 'make_dataconfig. py':
 
    ```bash
    python make_data_config.py \
-     --data_folder data/full_label \  # 数据集根目录
-     --language zh \                 # 指定语言标识（zh/ja/en等）
-     --output configs/datasets_zh.yaml  # 指定输出文件名（可选）
+     --data_folder data/full_label \    # Root directory of dataset
+     --language zh \                    # Specify language identifier (zh/ja/en, etc.)
+     --output configs/datasets_zh.yaml  # Specify output file name (optional)
    ```
 
-   [数据集配置](configs/datasets_config.yaml)
+   [datasets config](configs/datasets_config.yaml)
 
-   [nll配置](configs/non_lexical_labeler.yaml)
+   ```bash
+   - raw_data_dir: data/full_label/male1_byBaiShuo/raw
+     label_type: full       # full/evaluate， The two formats are the same, and the evaluate dataset is used as an unseen spk to evaluate the performance of the model.
+     language: zh
+     test_prefixes:
+       - B3_o_n_o_o_a_o_i_o
+   ```
 
-   [fa配置](configs/force_alignment.yaml)
+3. Modify config. yaml as needed, then execute
+   ```bash
+   python binarize. py -- config/- c configs/*. yaml -- model nll/fa 
+   ```
 
-3. 按需修改`binarize_config.yaml`，然后执行`python binarize.py --config/-c configs/binarize_config.yaml`；
-4. 训练`python train.py --config/-c configs/train_config.yaml`
-5. 训练可视化：`tensorboard --logdir=ckpt/`。
+   [nll config](configs/non_lexical_labeler.yaml)
 
-## 评估（适用于模型开发者）
+   [fa config](configs/force_alignment.yaml)
 
-可通过在预测（强制对齐）标注与目标（人工）标注之间计算特定的客观评价指标（尤其是在k折交叉验证中）来评估模型性能。
+4. Training: `python train.py --config/-c configs/*.yaml  --model nll/fa`
+5. Training visualization: `tensorboard --logdir=ckpt/`。
 
-以下指标受标注风格影响，并不是越低越好（相同数据集、encoder时，较低值可以考虑使用）。
++ Nll model reference indicators `unseen_evaluate/frame_error_rate`
 
-- BoundaryEditRatio: 边界编辑比率，从预测的边界到目标边界的总移动距离。
-- BoundaryEditRatioWeighted: 边界编辑加权距离，包括音素未对齐数量*0.1。
-- VlabelerEditRatio10-20ms: 边界错误率，在给定的容差值下，位置错误的边界数占据目标边界总数的比例。
++ FA model reference indicators `unseen_evaluate/total`
 
-若要在特定的数据集上验证你的模型，请先运行推理以得到所有的预测标注。随后，你需要将预测标注与目标标注放置在不同的文件夹中，相对应的标注文件需要保持相同文件名、相同相对路径，并包含相同的音素序列（空白音素除外）。此脚本当前仅支持TextGrid格式。
++ During training, the lower n models will be automatically saved, and the best model will be selected from the 2-3
+  models with the lowest metrics. The evaluation dataset should use spk that did not participate in training, and the
+  annotation accuracy should be higher.
 
-运行以下命令：
+## Evaluation (applicable to model developers)
+
+Model performance can be evaluated by calculating specific objective evaluation metrics (especially in k-fold cross
+validation) between predicted (forced alignment) annotations and target (manual) annotations.
+
+The following indicators are influenced by the annotation style, and lower values are not necessarily better (when using
+the same dataset and encoder, lower values can be considered for use).
+
+- BoundaryEditRatio: The total distance traveled from the predicted boundary to the target boundary.
+- BoundaryEditRatioWeighted: Weighted distance for boundary editing, including the number of phonemes not aligned * 0.1.
+- VlabelerEditRatio10-20ms: Boundary error rate, the proportion of boundaries with incorrect positions to the total
+  number of target boundaries within a given tolerance value.
+
+To validate your model on a specific dataset, first run inference to obtain all predicted annotations. Subsequently, you
+need to place the predicted annotation and the target annotation in different folders, and the corresponding annotation
+files need to maintain the same file name, relative path, and contain the same phoneme sequence (except for blank
+phonemes). This script currently only supports TextGrid format.
+
+Run the following command:
 
 ```bash
 python scripts/evaluate.py <PRED_DIR> <TARGET_DIR> -r
 ```
 
-其中 `PRED_DIR` 是包含所有预测标注的目录，`TARGET_DIR` 是包含所有目标标注的目录。
+Among them, ` PRED_DIR ` is the directory containing all predicted annotations, and ` TARGET-DIR ` is the directory
+containing all target annotations.
 
-可选项：
+Optional:
 
-- `-r`, `--recursive`: 递归对比子文件夹中的文件
-- `--ignore`: 忽略部分音素记号（默认值：`AP,SP,<AP>,<SP>,,pau,cl`）
+-` - r `, ` -- recursive `: recursively compare files in subfolders
+--- ignore: Ignore some phoneme markers (default values: AP, SP,<AP>,<SP>, Pau, cl)
 
-# 参考项目
+# Reference project
 
 + [SOFA](https://github.com/qiuqiao/SOFA)
 + [FoxBreatheLabeler](https://github.com/autumn-DL/FoxBreatheLabeler)

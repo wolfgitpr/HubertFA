@@ -58,8 +58,9 @@ class InferenceOnnx(InferenceBase):
 
 
 @click.command()
-@click.option("--onnx_path", "-m", required=True, type=pathlib.Path, help="Path to Onnx/Pytorch models")
-@click.option("--wav_folder", "-f", default="segments", type=pathlib.Path, help="Input folder path")
+@click.option("--onnx_path", "-m", required=True, type=pathlib.Path, help="Path to Onnx models")
+@click.option("--wav_folder", "-wf", default="segments", type=pathlib.Path, help="Input folder path")
+@click.option("--out_path", "-o", default=None, type=str, help="path to the output label")
 @click.option("--g2p", "-g", default="dictionary", type=str, help="G2P class name")
 @click.option("--non_lexical_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
 @click.option("--language", "-l", default="zh", help="Dictionary language")
@@ -67,8 +68,8 @@ class InferenceOnnx(InferenceBase):
 @click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
 @click.option("--pad_length", "-pl", type=int, default=5,
               help="The max length of blank audio on the pad before inference")
-def infer(onnx_path: pathlib.Path, wav_folder: pathlib.Path, g2p: str, non_lexical_phonemes: str, language: str,
-          dictionary: pathlib.Path, pad_times: int, pad_length: int):
+def infer(onnx_path: pathlib.Path, wav_folder: pathlib.Path, out_path: pathlib.Path | None, g2p: str,
+          non_lexical_phonemes: str, language: str, dictionary: pathlib.Path, pad_times: int, pad_length: int):
     assert onnx_path.exists() and onnx_path.is_file() and onnx_path.suffix == '.onnx', \
         f"Path {onnx_path} does not exist or is not a onnx file."
 
@@ -78,7 +79,7 @@ def infer(onnx_path: pathlib.Path, wav_folder: pathlib.Path, g2p: str, non_lexic
     inference.load_model()
     inference.get_dataset(wav_folder=wav_folder, language=language, g2p=g2p, dictionary_path=dictionary)
     inference.infer(non_lexical_phonemes=non_lexical_phonemes, pad_times=pad_times, pad_length=pad_length)
-    inference.export(output_folder=wav_folder.parent, output_format=['textgrid'])
+    inference.export(output_folder=wav_folder.parent if out_path is None else out_path, output_format=['textgrid'])
 
 
 if __name__ == '__main__':

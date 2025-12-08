@@ -76,18 +76,19 @@ class InferenceLit(InferenceBase):
 @click.command()
 @click.option("--nll_path", "-nll", required=True, type=pathlib.Path, help="Path to nll models")
 @click.option("--fa_path", "-fa", required=True, type=pathlib.Path, help="Path to fa models")
-@click.option("--encoder", "-e", default=None, type=str, help="path to the encoder model")
-@click.option("--wav_folder", "-f", default="segments", type=pathlib.Path, help="Input folder path")
+@click.option("--out_path", "-o", default=None, type=str, help="Path to the output label")
+@click.option("--encoder", "-e", default=None, type=str, help="Path to the encoder model")
+@click.option("--wav_folder", "-wf", default="segments", type=pathlib.Path, help="Input folder path")
 @click.option("--g2p", "-g", default="dictionary", type=str, help="G2P class name")
-@click.option("--non_lexical_phonemes", "-np", default="AP", type=str, help="non speech phonemes, exp. AP,EP")
+@click.option("--non_lexical_phonemes", "-np", default="AP", type=str, help="Non speech phonemes, exp. AP,EP")
 @click.option("--language", "-l", default="zh", help="Dictionary language")
 @click.option("--dictionary", "-d", type=pathlib.Path, help="Custom dictionary path")
 @click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
 @click.option("--pad_length", "-pl", type=int, default=5,
               help="The max length of blank audio on the pad before inference")
-def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, encoder: pathlib.Path | None, wav_folder: pathlib.Path,
-          g2p: str, non_lexical_phonemes: str, language: str, dictionary: pathlib.Path, pad_times: int,
-          pad_length: int):
+def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, out_path: pathlib.Path | None, encoder: pathlib.Path | None,
+          wav_folder: pathlib.Path, g2p: str, non_lexical_phonemes: str, language: str, dictionary: pathlib.Path,
+          pad_times: int, pad_length: int):
     assert nll_path.exists() and nll_path.is_file() and nll_path.suffix == '.ckpt', \
         f"Path {nll_path} does not exist or is not a ckpt file."
     assert fa_path.exists() and fa_path.is_file() and fa_path.suffix == '.ckpt', \
@@ -99,7 +100,7 @@ def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, encoder: pathlib.Path |
     inference.load_model()
     inference.get_dataset(wav_folder=wav_folder, language=language, g2p=g2p, dictionary_path=dictionary)
     inference.infer(non_lexical_phonemes=non_lexical_phonemes, pad_times=pad_times, pad_length=pad_length)
-    inference.export(output_folder=wav_folder.parent, output_format=['textgrid'])
+    inference.export(output_folder=wav_folder.parent if out_path is None else out_path, output_format=['textgrid'])
 
 
 if __name__ == '__main__':
