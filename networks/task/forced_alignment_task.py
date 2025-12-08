@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.optim.lr_scheduler as lr_scheduler_module
 
 import networks.scheduler as scheduler_module
-from evaluate import remove_ignored_phonemes, quantize_tier
+from scripts.evaluate import remove_ignored_phonemes, quantize_tier
 from networks.layer.backbone.unet import UNetBackbone
 from networks.layer.block.resnet_block import ResidualBasicBlock
 from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion

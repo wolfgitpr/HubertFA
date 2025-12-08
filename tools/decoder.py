@@ -105,7 +105,6 @@ class AlignmentDecoder:
                 word.add_phoneme(phoneme)
                 words.append(word)
                 word_idx_last = word_idx
-        words.fill_small_gaps(wav_length)
         self.ph_seq_pred, self.ph_intervals_pred, self.pred_words = words.phonemes, words.intervals, words
         return words, total_confidence
 
@@ -247,14 +246,11 @@ class NonLexicalDecoder:
             cvnt_logits = cvnt_logits[:, :, :num_frames]
         self.cvnt_probs = softmax(cvnt_logits, axis=1)[0]
 
-        words = WordList()
         non_lexical_words = []
         for ph in non_lexical_phonemes:
             i = self.non_lexical_phs.index(ph)
             tag_words: list[Word] = self.non_lexical_words(self.cvnt_probs[i], tag=ph)
-            for tag_word in tag_words:
-                words.add_AP(tag_word)
-            non_lexical_words.append(words)
+            non_lexical_words.append(tag_words)
         return non_lexical_words
 
     def plot(self, mel_spec):

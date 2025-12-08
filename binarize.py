@@ -291,7 +291,7 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
                 'mel_spec': np.repeat(mel_spec, B, axis=0).astype("float32"),  # [B, C, T]
                 "non_lexical_target": np.repeat(non_lexical_target[np.newaxis, :], B, axis=0).astype("int32"),
                 "non_lexical_intervals": np.repeat(non_lexical_intervals[np.newaxis, :], B, axis=0).astype("int32"),
-                "wav_length": wav_length
+                "wav_length": np.repeat([wav_length], B, axis=0).astype("float32")
             }
 
         except Exception as e:

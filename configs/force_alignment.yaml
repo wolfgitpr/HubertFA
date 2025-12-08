@@ -1,4 +1,4 @@
-model_name: 1201_fa_aug
+model_name: 1201_fa
 
 float32_matmul_precision: high
 random_seed: 123456
@@ -19,8 +19,8 @@ language_prefix: true # When enabled, automatically add language prefixes for di
 # Word /tab phoneme_1 /space phoneme_2
 dictionaries:
   zh: dictionaries/opencpop-extension.txt
-#  ja: dictionaries/japanese_dict_full.txt
-#  en: dictionaries/ds_cmudict-07b.txt
+  ja: dictionaries/japanese_dict_full.txt
+  en: dictionaries/ds_cmudict-07b.txt
 #  yue: dictionaries/jyutping_dict.txt
 
 datasets_config_paths: # datasets
@@ -39,8 +39,8 @@ multiprocess_start_size: 100  # Minimum startup data volume
 # Number of training data loading processes
 dataloader_workers: 2
 dataloader_prefetch_factor: 2
-batch_max_length: 100
-binning_length: 500
+batch_max_length: 200
+binning_length: 1000
 drop_last: False
 
 num_valid_plots: 20 # Maximum drawing quantity for val and evaluate items
@@ -88,10 +88,10 @@ devices: auto # num_devices
 precision: bf16-mixed # bf16-mixed , 32-true
 gradient_clip_val: 0.5
 gradient_clip_algorithm: norm
-val_check_interval: 500
+val_check_interval: 1000
 
 save_top_k: 5
-save_every_steps: 500
+save_every_steps: 1000
 
 # Normally not changed
 hubert_config:

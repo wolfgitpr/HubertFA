@@ -46,7 +46,7 @@ class InferenceLit(InferenceBase):
     def _infer(self, padded_wav, padded_frames, word_seq, ph_seq, ph_idx_to_word_idx, wav_length, non_lexical_phonemes):
         input_feature = self.unitsEncoder.forward(torch.as_tensor(padded_wav, device=self.device).unsqueeze(0),
                                                   self.mel_cfg["sample_rate"], self.mel_cfg["hop_size"])  # [B, T, C]
-        input_feature = input_feature.transpose(1, 2)
+        input_feature = input_feature.transpose(1, 2).half().float()
         curves = get_curves(torch.as_tensor(padded_wav, device=self.device), input_feature.shape[-1],
                             self.fa_model.window_size, self.fa_model.hop_size)  # [B, C, T]
 
@@ -100,7 +100,7 @@ def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, out_path: pathlib.Path 
     inference.load_model()
     inference.get_dataset(wav_folder=wav_folder, language=language, g2p=g2p, dictionary_path=dictionary)
     inference.infer(non_lexical_phonemes=non_lexical_phonemes, pad_times=pad_times, pad_length=pad_length)
-    inference.export(output_folder=wav_folder.parent if out_path is None else out_path, output_format=['textgrid'])
+    inference.export(output_folder=wav_folder if out_path is None else out_path, output_format=['textgrid'])
 
 
 if __name__ == '__main__':

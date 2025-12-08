@@ -40,8 +40,7 @@ class InferenceOnnx(InferenceBase):
         )
 
         non_lexical_words = self.nll_decoder.decode(cvnt_logits=results['cvnt_logits'][:, :, padded_frames + 1:],
-                                                    wav_length=wav_length,
-                                                    non_lexical_phonemes=non_lexical_phonemes)
+                                                    wav_length=wav_length, non_lexical_phonemes=non_lexical_phonemes)
         return words, non_lexical_words
 
     @staticmethod
@@ -79,7 +78,7 @@ def infer(onnx_path: pathlib.Path, wav_folder: pathlib.Path, out_path: pathlib.P
     inference.load_model()
     inference.get_dataset(wav_folder=wav_folder, language=language, g2p=g2p, dictionary_path=dictionary)
     inference.infer(non_lexical_phonemes=non_lexical_phonemes, pad_times=pad_times, pad_length=pad_length)
-    inference.export(output_folder=wav_folder.parent if out_path is None else out_path, output_format=['textgrid'])
+    inference.export(output_folder=wav_folder if out_path is None else out_path, output_format=['textgrid'])
 
 
 if __name__ == '__main__':

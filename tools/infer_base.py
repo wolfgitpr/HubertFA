@@ -201,8 +201,7 @@ class InferenceBase:
                                                        wav_length, non_lexical_phonemes)
                 for _words in non_lexical_words:
                     for word in _words:
-                        if word.text in ['AP', 'EP']:
-                            words.add_AP(word)
+                        words.add_AP(word)
                 words.clear_language_prefix()
                 words_list.append(words)
 
@@ -226,6 +225,7 @@ class InferenceBase:
                 for ph in phonemes:
                     word.append_phoneme(ph)
                 result_word.append(word)
+            result_word.fill_small_gaps(wav_length)
             result_word.add_SP(wav_length)
             self.predictions.append((wav_path, wav_length, result_word))
 

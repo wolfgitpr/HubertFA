@@ -10,8 +10,7 @@ non_lexical_phonemes:
   - EP
 
 datasets_config_paths: # datasets
-  - configs/datasets_public.yaml
-  - configs/datasets_evaluate.yaml
+  - configs/datasets_config.yaml
 
 binary_folder: data/binary_nll # Preprocessing Results Folder
 valid_set_size: 20 # When valid_set_Size is greater than 0, randomly select by quantity; otherwise, use the validation set in the dataset

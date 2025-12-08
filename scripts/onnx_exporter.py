@@ -214,32 +214,31 @@ def merge_model(merged_path, encoder_path, predict_path):
 
 @torch.no_grad()
 @click.command(help='')
-@click.option('--nll_ckpt_path', '-nll', required=True, type=str, help='Path to the checkpoint')
-@click.option('--fa_ckpt_path', '-fa', required=True, type=str, help='Path to the checkpoint')
+@click.option('--nll_path', '-nll', required=True, type=str, help='Path to the checkpoint')
+@click.option('--fa_path', '-fa', required=True, type=str, help='Path to the checkpoint')
 @click.option("--hubert_path", "-h", default=None, type=str, help="path to the encoder model")
 @click.option('--out_folder', '-o', required=True, metavar='DIR', help='Path to the onnx')
-def export(nll_ckpt_path, fa_ckpt_path, hubert_path, out_folder):
-    assert nll_ckpt_path is not None, "Checkpoint directory (nll_ckpt_path) cannot be None"
-    assert fa_ckpt_path is not None, "Checkpoint directory (fa_ckpt_path) cannot be None"
+def export(nll_path, fa_path, hubert_path, out_folder):
+    assert nll_path is not None, "Checkpoint directory (nll_path) cannot be None"
+    assert fa_path is not None, "Checkpoint directory (fa_path) cannot be None"
 
-    nll_ckpt_path = pathlib.Path(nll_ckpt_path)
-    fa_ckpt_path = pathlib.Path(fa_ckpt_path)
+    nll_path = pathlib.Path(nll_path)
+    fa_path = pathlib.Path(fa_path)
     out_folder = pathlib.Path(out_folder)
 
-    assert nll_ckpt_path.exists(), f"Checkpoint path does not exist: {nll_ckpt_path}"
+    assert nll_path.exists(), f"Checkpoint path does not exist: {nll_path}"
     assert (
-            nll_ckpt_path.parent / "config.yaml").exists(), f"Checkpoint folder {nll_ckpt_path.parent} does not exist: config.yaml"
+                nll_path.parent / "config.yaml").exists(), f"Checkpoint folder {nll_path.parent} does not exist: config.yaml"
 
-    assert fa_ckpt_path.exists(), f"Checkpoint path does not exist: {fa_ckpt_path}"
-    assert (
-            fa_ckpt_path.parent / "config.yaml").exists(), f"Checkpoint folder {fa_ckpt_path.parent}does not exist: config.yaml"
+    assert fa_path.exists(), f"Checkpoint path does not exist: {fa_path}"
+    assert (fa_path.parent / "config.yaml").exists(), f"Checkpoint folder {fa_path.parent}does not exist: config.yaml"
 
     out_folder.mkdir(parents=True, exist_ok=True)
     onnx_path = str(out_folder / "model.onnx")
     assert not os.path.exists(onnx_path), f"Error: The file '{onnx_path}' already exists."
 
-    nll_config = load_yaml(nll_ckpt_path.parent / "config.yaml")
-    fa_config = load_yaml(fa_ckpt_path.parent / "config.yaml")
+    nll_config = load_yaml(nll_path.parent / "config.yaml")
+    fa_config = load_yaml(fa_path.parent / "config.yaml")
 
     hubert_config = nll_config['hubert_config']
     mel_spec_config = nll_config['mel_spec_config']
@@ -247,7 +246,7 @@ def export(nll_ckpt_path, fa_ckpt_path, hubert_path, out_folder):
     assert mel_spec_config == fa_config['mel_spec_config'], f"nll and fa model must have same mel spec config."
 
     encoder_path = export_encoder(out_folder, hubert_config, mel_spec_config, hubert_path=hubert_path)
-    predict_path = export_predict_model(out_folder, nll_ckpt_path, fa_ckpt_path, hubert_config, mel_spec_config)
+    predict_path = export_predict_model(out_folder, nll_path, fa_path, hubert_config, mel_spec_config)
 
     merged_path = str(out_folder / "model.onnx")
     merge_model(merged_path, encoder_path, predict_path)
