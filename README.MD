@@ -200,7 +200,7 @@ phonemes). This script currently only supports TextGrid format.
 Run the following command:
 
 ```bash
-python scripts/evaluate.py <PRED_DIR> <TARGET_DIR> -r
+python scripts/evaluate.py PRED_DIR TARGET_DIR -r
 ```
 
 Among them, ` PRED_DIR ` is the directory containing all predicted annotations, and ` TARGET-DIR ` is the directory
@@ -208,7 +208,7 @@ containing all target annotations.
 
 Optional:
 
--` - r `, ` -- recursive `: recursively compare files in subfolders
+- `-- recursive`, `-r`: recursively compare files in subfolders
 --- ignore: Ignore some phoneme markers (default values: AP, SP,<AP>,<SP>, Pau, cl)
 
 # Reference project
