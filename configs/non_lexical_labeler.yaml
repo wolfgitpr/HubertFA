@@ -32,7 +32,7 @@ drop_last: False
 num_valid_plots: 20 # Maximum drawing quantity for val and evaluate items
 draw_evaluate: True
 
-augmentation_args: # Data augmentation, effective in the preprocessing phase
+augmentation_args: # Code defect, prohibited from use
   enabled: false
   random_pitch_shifting:
     range: [ -5., 5. ]

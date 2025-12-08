@@ -34,12 +34,12 @@ class InferenceOnnx(InferenceBase):
         results = self.run_onnx(self.model, {'waveform': [padded_wav]})
 
         words, _ = self.fa_decoder.decode(
-            ph_frame_logits=results['ph_frame_logits'][:, :, padded_frames + 1:],
-            ph_edge_logits=results['ph_edge_logits'][:, padded_frames + 1:],
+            ph_frame_logits=results['ph_frame_logits'][:, :, padded_frames:],
+            ph_edge_logits=results['ph_edge_logits'][:, padded_frames:],
             wav_length=wav_length, ph_seq=ph_seq, word_seq=word_seq, ph_idx_to_word_idx=ph_idx_to_word_idx
         )
 
-        non_lexical_words = self.nll_decoder.decode(cvnt_logits=results['cvnt_logits'][:, :, padded_frames + 1:],
+        non_lexical_words = self.nll_decoder.decode(cvnt_logits=results['cvnt_logits'][:, :, padded_frames:],
                                                     wav_length=wav_length, non_lexical_phonemes=non_lexical_phonemes)
         return words, non_lexical_words
 
