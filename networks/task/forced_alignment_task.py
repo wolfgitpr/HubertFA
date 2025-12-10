@@ -7,7 +7,7 @@ import torch.optim.lr_scheduler as lr_scheduler_module
 
 import networks.scheduler as scheduler_module
 from networks.layer.backbone.unet import UNetBackbone
-from networks.layer.block.resnet_block import ResidualBasicBlock
+from networks.layer.block.resnet_block import AttentionResidualBasicBlock
 from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
@@ -48,7 +48,7 @@ class LitForcedAlignmentTask(pl.LightningModule):
             input_dims=self.hubert_config["channel"],
             output_dims=self.fa_arg["hidden_dims"],
             hidden_dims=self.fa_arg["hidden_dims"],
-            block=ResidualBasicBlock,
+            block=AttentionResidualBasicBlock,
             down_sampling=DownSampling,
             up_sampling=UpSampling,
             down_sampling_factor=self.fa_arg["down_sampling_factor"],
