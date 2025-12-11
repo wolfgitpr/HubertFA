@@ -65,7 +65,7 @@ class DictionaryG2P(BaseG2P):
         _ph_idx_to_word_idx = [-1]
         for word in word_seq_raw:
             if word not in self.dictionary:
-                warnings.warn(f"Word {word} is not in the dictionary. Ignored.")
+                warnings.warn(f"Word '{word}' is not in the dictionary. Ignored.")
                 continue
             _word_seq.append(word)
             phones = self.dictionary[word]
