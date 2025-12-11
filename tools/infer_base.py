@@ -227,6 +227,9 @@ class InferenceBase:
                 result_word.append(word)
             result_word.fill_small_gaps(wav_length)
             result_word.add_SP(wav_length)
+            warning_log = result_word.log()
+            if warning_log:
+                warnings.warn(warning_log)
             self.predictions.append((wav_path, wav_length, result_word))
 
     def export(self, output_folder, output_format=None):
