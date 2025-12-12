@@ -439,7 +439,6 @@ class ForcedAlignmentBinarizer(BaseBinarizer):
 
             ph_edge[ph_time_int] = 0.5 + ph_time_fractional
             ph_edge[ph_time_int - 1] = 0.5 - ph_time_fractional
-            ph_edge = ph_edge * 0.8 + 0.1
 
         # ph_frame: [T]
         ph_frame = np.zeros(frames, dtype="int32")
