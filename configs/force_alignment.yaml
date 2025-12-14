@@ -67,7 +67,7 @@ fa_arg:
 optimizer_config:
   lr: 0.0003
   gamma: 0.9999
-  total_steps: 20000
+  total_steps: 10000
   muon_args:
     weight_decay: 0.1
   adamw_args:
