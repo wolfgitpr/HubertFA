@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional as F
 
+from networks.layer.attention.attention import SEAttention
+
 
 class UNetBackbone(nn.Module):
     def __init__(
@@ -16,26 +18,15 @@ class UNetBackbone(nn.Module):
             channels_scaleup_factor: float = 2.0,
             dropout: float = 0.1,
     ):
-        """_summary_
-
-        Args:
-            input_dims (int):
-            output_dims (int):
-            hidden_dims (int):
-            block (nn.Module): shape: (B, C, T) -> shape: (B, C, T)
-            down_sampling (nn.Module): shape: (B, C, T) -> shape: (B, C*2, T/down_sampling_factor)
-            up_sampling (nn.Module): shape: (B, C, T) -> shape: (B, C/2, T*down_sampling_factor)
-        """
         super(UNetBackbone, self).__init__()
 
         self.input_dims = input_dims
         self.output_dims = output_dims
         self.hidden_dims = hidden_dims
-
         self.divisible_factor = down_sampling_factor ** down_sampling_times
 
         self.encoders = nn.ModuleList()
-        self.encoders.append(block(input_dims, hidden_dims, dropout=dropout))
+        self.encoders.append(self._attention_block(block, input_dims, hidden_dims, dropout))
         for i in range(down_sampling_times - 1):
             i += 1
             self.encoders.append(
@@ -45,10 +36,11 @@ class UNetBackbone(nn.Module):
                         int(channels_scaleup_factor ** i) * hidden_dims,
                         down_sampling_factor,
                     ),
-                    block(
+                    self._attention_block(
+                        block,
                         int(channels_scaleup_factor ** i) * hidden_dims,
                         int(channels_scaleup_factor ** i) * hidden_dims,
-                        dropout=dropout,
+                        dropout,
                     ),
                 )
             )
@@ -59,10 +51,11 @@ class UNetBackbone(nn.Module):
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 down_sampling_factor,
             ),
-            block(
+            self._attention_block(
+                block,
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
-                dropout=dropout,
+                dropout,
             ),
             up_sampling(
                 int(channels_scaleup_factor ** down_sampling_times) * hidden_dims,
@@ -76,12 +69,13 @@ class UNetBackbone(nn.Module):
             i += 1
             self.decoders.append(
                 nn.Sequential(
-                    block(
+                    self._attention_block(
+                        block,
                         int(channels_scaleup_factor ** (down_sampling_times - i))
                         * hidden_dims,
                         int(channels_scaleup_factor ** (down_sampling_times - i))
                         * hidden_dims,
-                        dropout=dropout,
+                        dropout,
                     ),
                     up_sampling(
                         int(channels_scaleup_factor ** (down_sampling_times - i))
@@ -92,11 +86,16 @@ class UNetBackbone(nn.Module):
                     ),
                 )
             )
-        self.decoders.append(block(hidden_dims, output_dims))
+        self.decoders.append(self._attention_block(block, hidden_dims, output_dims, dropout))
 
-    def forward(self,
-                x,  # [B, C, T]
-                ):
+    @staticmethod
+    def _attention_block(block_class, in_channels, out_channels, dropout):
+        return nn.Sequential(
+            block_class(in_channels, out_channels, dropout=dropout),
+            SEAttention(out_channels)
+        )
+
+    def forward(self, x):  # x: [B, C, T]
         B, C, T = x.shape
         padding_len = (-T) % self.divisible_factor
         x = F.pad(x, (0, padding_len))

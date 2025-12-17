@@ -1,4 +1,4 @@
-model_name: 1201_fa
+model_name: 1218_fa
 
 float32_matmul_precision: high
 random_seed: 123456
@@ -67,7 +67,7 @@ fa_arg:
 optimizer_config:
   lr: 0.0003
   gamma: 0.9999
-  total_steps: 20000
+  total_steps: 10000
   muon_args:
     weight_decay: 0.1
   adamw_args:
@@ -104,9 +104,9 @@ hubert_config:
 mel_spec_config:
   n_mels: 128
   sample_rate: 44100
-  window_size: 1024
-  hop_size: 512
-  n_fft: 2048
+  window_size: 882
+  hop_size: 441
+  n_fft: 1764
   f_min: 40
   f_max: 16000
   clamp: 0.00001

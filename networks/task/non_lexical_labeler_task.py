@@ -8,9 +8,7 @@ import torch.optim.lr_scheduler as lr_scheduler_module
 
 from networks.layer.backbone.cvnt import CVNT
 from networks.optimizer.muon import Muon_AdamW
-from tools.binarize_util import load_wav
 from tools.decoder import NonLexicalDecoder
-from tools.get_melspec import MelSpecExtractor
 
 
 class LitNonLexicalLabelerTask(pl.LightningModule):
@@ -30,10 +28,10 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
         self.optimizer_config: dict = config["optimizer_config"]
         self.loss_config: dict = config["loss_config"]
 
-        self.hop_size = self.mel_spec_config["hop_size"]
-        self.window_size = self.mel_spec_config["window_size"]
-        self.sample_rate = self.mel_spec_config["sample_rate"]
-        self.frame_length = self.hop_size / self.sample_rate
+        self.hop_size: int = self.mel_spec_config["hop_size"]
+        self.window_size: int = self.mel_spec_config["window_size"]
+        self.sample_rate: int = self.mel_spec_config["sample_rate"]
+        self.frame_length: float = self.hop_size / self.sample_rate
 
         self.non_lexical_phonemes: list = self.vocab["non_lexical_phonemes"]
         self.non_lexical_mask_ratio: float = self.config["cvnt_arg"]["mask_ratio"]
@@ -75,10 +73,6 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
     def on_train_start(self):
         self.losses_weights = self.losses_weights.to(self.device)
 
-    def on_predict_start(self):
-        if self.get_mel_spec is None:
-            self.get_mel_spec = MelSpecExtractor(**self.mel_spec_config, device=self.device)
-
     def make_non_lexical_mask(self, shape, non_lexical_intervals):
         B, C, T = shape
         non_lexical_mask = torch.zeros((B, 1, T), dtype=torch.bool, device=self.device)
@@ -101,22 +95,6 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
                             offset = random.randint(0, max(0, ph_len - mask_len))
                             non_lexical_mask[mask_idx, :, start_frame + offset:start_frame + offset + mask_len] = True
         return non_lexical_mask
-
-    def predict_step(self, batch, batch_idx):
-        wav_path, ph_seq, word_seq, ph_idx_to_word_idx, language, non_lexical_phonemes = batch
-        waveform, wav_length, n_frames = load_wav(wav_path, self.sample_rate, self.hop_size,
-                                                  self.device)  # (L,) seconds
-        input_feature = self.get_mel_spec(waveform)  # [B, C, T]
-        with torch.no_grad():
-            cvnt_logits = self.forward(input_feature)  # [B, N, T]
-
-        words = self.decoder.decode(
-            cvnt_logits=cvnt_logits.float().cpu().numpy(),
-            wav_length=wav_length,
-            non_lexical_phonemes=non_lexical_phonemes
-        )
-
-        return wav_path, wav_length, words
 
     def cross_entropy_and_focal_loss(self, logits, targets):
         log_probs = F.log_softmax(logits, dim=1)
@@ -316,7 +294,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
 
         if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))
                 and batch_idx < self.config.get("num_valid_plots", 20)):
-            fig = self.decoder.plot(mel_spec.cpu().numpy())
+            fig = self.decoder.plot(mel_spec.cpu().numpy(), non_lexical_target[0].cpu().numpy())
             self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0]}", fig,
                                               self.global_step)
 

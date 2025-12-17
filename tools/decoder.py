@@ -253,10 +253,10 @@ class NonLexicalDecoder:
             non_lexical_words.append(tag_words)
         return non_lexical_words
 
-    def plot(self, mel_spec):
+    def plot(self, mel_spec, non_lexical_target=None):
         return plot_non_lexical_phonemes(
             mel_spec=mel_spec, cvnt_prob=self.cvnt_probs,
-            label=self.non_lexical_phs, frame_duration=self.frame_length
+            label=self.non_lexical_phs, frame_duration=self.frame_length, non_lexical_target=non_lexical_target
         )
 
     def non_lexical_words(self, prob, threshold=0.5, max_gap=5, mix_frames=10, tag=""):

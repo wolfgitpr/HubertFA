@@ -6,15 +6,14 @@ import torch.nn.functional as F
 import torch.optim.lr_scheduler as lr_scheduler_module
 
 import networks.scheduler as scheduler_module
-from scripts.evaluate import remove_ignored_phonemes, quantize_tier
 from networks.layer.backbone.unet import UNetBackbone
-from networks.layer.block.resnet_block import ResidualBasicBlock
+from networks.layer.block.resnet_block import AttentionResidualBasicBlock
 from networks.layer.fusion.curves_fusion import PowerCurveEdgeFusion
 from networks.layer.scaling.stride_conv import DownSampling, UpSampling
 from networks.loss.GHMLoss import CTCGHMLoss, GHMLoss, MultiLabelGHMLoss
 from networks.optimizer.muon import Muon_AdamW
+from scripts.evaluate import remove_ignored_phonemes, quantize_tier
 from tools.decoder import AlignmentDecoder
-from tools.encoder import UnitsEncoder
 from tools.metrics import BoundaryEditRatio, BoundaryEditRatioWeighted, VlabelerEditRatio, CustomPointTier
 
 
@@ -49,12 +48,12 @@ class LitForcedAlignmentTask(pl.LightningModule):
             input_dims=self.hubert_config["channel"],
             output_dims=self.fa_arg["hidden_dims"],
             hidden_dims=self.fa_arg["hidden_dims"],
-            block=ResidualBasicBlock,
+            block=AttentionResidualBasicBlock,
             down_sampling=DownSampling,
             up_sampling=UpSampling,
-            down_sampling_factor=self.fa_arg["down_sampling_factor"],  # 2
-            down_sampling_times=self.fa_arg["down_sampling_times"],  # 3
-            channels_scaleup_factor=self.fa_arg["channels_scaleup_factor"],  # 1.5
+            down_sampling_factor=self.fa_arg["down_sampling_factor"],
+            down_sampling_times=self.fa_arg["down_sampling_times"],
+            channels_scaleup_factor=self.fa_arg["channels_scaleup_factor"],
             dropout=self.fa_arg["dropout"],
         )
 
@@ -144,10 +143,6 @@ class LitForcedAlignmentTask(pl.LightningModule):
 
     def _losses_schedulers_call(self):
         return torch.tensor([scheduler() for scheduler in self.losses_schedulers]).to(self.device)
-
-    def on_predict_start(self):
-        if self.unitsEncoder is None:
-            self.unitsEncoder = UnitsEncoder(self.hubert_config, self.mel_spec_config, device=self.device)
 
     def _get_consistency_loss(
             self,
