@@ -294,7 +294,7 @@ class LitNonLexicalLabelerTask(pl.LightningModule):
 
         if ((dataloader_idx == 0 or self.config.get("draw_evaluate", False))
                 and batch_idx < self.config.get("num_valid_plots", 20)):
-            fig = self.decoder.plot(mel_spec.cpu().numpy())
+            fig = self.decoder.plot(mel_spec.cpu().numpy(), non_lexical_target[0].cpu().numpy())
             self.logger.experiment.add_figure(f"{'evaluate' if dataloader_idx > 0 else 'valid'}/plot_{name[0]}", fig,
                                               self.global_step)
 

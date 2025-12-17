@@ -1,4 +1,4 @@
-model_name: 1209_fa_10ms
+model_name: 1218_fa
 
 float32_matmul_precision: high
 random_seed: 123456
