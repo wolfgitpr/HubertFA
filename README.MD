@@ -140,7 +140,7 @@ FA (forced alignment) model: Aligns phonemes with audio, requiring phoneme annot
 
 2. modify configuration
 
-   Automatically scan the data folder to generate a configuration file using 'make_dataconfig. py':
+   Automatically scan the data folder to generate a configuration file using 'make_dataconfig.py':
 
    ```bash
    python make_data_config.py \
@@ -159,9 +159,9 @@ FA (forced alignment) model: Aligns phonemes with audio, requiring phoneme annot
        - B3_o_n_o_o_a_o_i_o
    ```
 
-3. Modify config. yaml as needed, then execute
+3. Modify config.yaml as needed, then execute
    ```bash
-   python binarize. py -- config/- c configs/*. yaml -- model nll/fa 
+   python binarize.py -- config/- c configs/*. yaml -- model nll/fa 
    ```
 
    [nll config](configs/non_lexical_labeler.yaml)
@@ -209,7 +209,84 @@ containing all target annotations.
 Optional:
 
 - `-- recursive`, `-r`: recursively compare files in subfolders
---- ignore: Ignore some phoneme markers (default values: AP, SP,<AP>,<SP>, Pau, cl)
+  --- ignore: Ignore some phoneme markers (default values: AP, SP,<AP>,<SP>, Pau, cl)
+
+## Dictionary Migration Tool
+
+This tool helps migrate phoneme transcriptions from one dictionary format to another across multiple dataset label
+formats.
+
+### Supported Formats
+
+- **TextGrid** (`.TextGrid`) - Forced alignment labels
+- **CSV** (`.csv`) - Transcription files with `ph_seq` column
+- **YAML** (`.yaml`) - OpenUTAU `dsdict.yaml` dictionaries
+
+1. Migrate TextGrid Files
+
+   ```bash
+   python scripts/migrate_dict.py tg [TEXTGRID_DIR] \
+       --source-dict [SOURCE_DICT] \
+       --target-dict [TARGET_DICT] \
+       --save-path [OUTPUT_DIR] \
+       [--overwrite]
+   ```
+
+    - `TEXTGRID_DIR`: Directory containing .TextGrid files
+
+    - `--source-dict`: Path to source dictionary file.
+
+    - `--target-dict`: Path to target dictionary file.
+
+    - `--save-path`: Directory to save migrated files.
+
+    - `--overwrite`: Overwrite existing files (optional flag).
+
+2. Migrate CSV Transcription Files
+
+   ```bash
+   python scripts/migrate_dict.py csv [TRANSCRIPTION_CSV] \
+       --source-dict [SOURCE_DICT] \
+       --target-dict [TARGET_DICT] \
+       [--save-path [OUTPUT_CSV] ] \
+       [--overwrite]
+   ```
+
+    - `TRANSCRIPTION_CSV`: Path to CSV file with transcriptions.
+
+    - `--source-dict`: Path to source dictionary file.
+
+    - `--target-dict`: Path to target dictionary file.
+
+    - `--save-path`: Path to save migrated file (defaults to original file).
+
+    - `--overwrite`: Overwrite existing file (optional flag).
+
+3. Migrate OpenUTAU dsdict.yaml
+
+   ```bash
+   python scripts/migrate_dict.py yaml [DSDICT_YAML] \
+       --lang [LANGUAGE_CODE] \
+       [--main] \
+       --source-dict [SOURCE_DICT] \
+       --target-dict [TARGET_DICT] \
+       [--save-path [OUTPUT_YAML] ] \
+       [--overwrite]
+   ```
+
+    - `DSDICT_YAML`: Path to dsdict.yaml file.
+
+    - `--lang`: Language code to filter entries (e.g., "en", "ja").
+
+    - `--main`: Treat language as main language (migrate entries without prefix).
+
+    - `--source-dict`: Path to source dictionary file.
+
+    - `--target-dict`: Path to target dictionary file.
+
+    - `--save-path`: Path to save migrated file (defaults to original file).
+
+    - `--overwrite`: Overwrite existing file (optional flag).
 
 # Reference project
 
