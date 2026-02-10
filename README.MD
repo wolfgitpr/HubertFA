@@ -20,7 +20,7 @@ Optimization, support for aligned phonemes and automatic recognition of non-arti
 
 1. Clone git and create conda environment:
    ```bash
-   git clone https://gitclone.com/github.com/wolfgitpr/HubertFA.git
+   git clone https://github.com/wolfgitpr/HubertFA
    conda create -n HFA python=3.10 -y
    conda activate HFA
    ```
