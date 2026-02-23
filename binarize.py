@@ -254,7 +254,7 @@ class NonLexicalLabelBinarizer(BaseBinarizer):
         ph_frame_int = np.round(np.concatenate(([0], ph_frame))).astype(np.int32)
         ph_frame_int = np.clip(ph_frame_int, 0, frames)
 
-        num_phones = len(self.vocab) + 1
+        num_phones = len(self.non_lexical_phonemes) + 1
         non_lexical_target = np.zeros((num_phones, frames), dtype=np.int32)
         non_lexical_intervals = []
 
