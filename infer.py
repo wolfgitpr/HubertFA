@@ -90,7 +90,7 @@ class InferenceLit(InferenceBase):
               help="Format to export predictions to.")
 def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, out_path: pathlib.Path | None, encoder: pathlib.Path | None,
           wav_folder: pathlib.Path, g2p: str, non_lexical_phonemes: str, language: str, dictionary: pathlib.Path,
-          pad_times: int, pad_length: int, out_format: list[str]):
+          pad_times: int, pad_length: int, out_format: str):
     assert nll_path.exists() and nll_path.is_file() and nll_path.suffix == '.ckpt', \
         f"Path {nll_path} does not exist or is not a ckpt file."
     assert fa_path.exists() and fa_path.is_file() and fa_path.suffix == '.ckpt', \
