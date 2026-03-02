@@ -48,10 +48,10 @@ class Exporter:
                     ph_out += f"{ph_start} {ph_end} {phoneme.text}\n"
 
             if self.output_folder is not None:
-                htk_ph_path = self.output_folder / "HTK" / "Phonemes" / wav_path.with_suffix(".lab").name
+                htk_ph_path = self.output_folder / "HTK" / "Phones" / wav_path.with_suffix(".lab").name
                 htk_w_path = self.output_folder / "HTK" / "Words" / wav_path.with_suffix(".lab").name
             else:
-                htk_ph_path = wav_path.parent / "HTK" / "Phonemes" / wav_path.with_suffix(".lab").name
+                htk_ph_path = wav_path.parent / "HTK" / "Phones" / wav_path.with_suffix(".lab").name
                 htk_w_path = wav_path.parent / "HTK" / "Words" / wav_path.with_suffix(".lab").name
 
             htk_ph_path.parent.mkdir(parents=True, exist_ok=True)
