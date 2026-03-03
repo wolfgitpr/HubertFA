@@ -67,8 +67,10 @@ class InferenceOnnx(InferenceBase):
 @click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
 @click.option("--pad_length", "-pl", type=int, default=5,
               help="The max length of blank audio on the pad before inference")
+@click.option("--out_format", "-f", type=click.Choice(['TextGrid', 'HTK']), default='TextGrid',
+              help="Format to export predictions to.")
 def infer(onnx_path: pathlib.Path, wav_folder: pathlib.Path, out_path: pathlib.Path | None, g2p: str,
-          non_lexical_phonemes: str, language: str, dictionary: pathlib.Path, pad_times: int, pad_length: int):
+          non_lexical_phonemes: str, language: str, dictionary: pathlib.Path, pad_times: int, pad_length: int, out_format: str):
     assert onnx_path.exists() and onnx_path.is_file() and onnx_path.suffix == '.onnx', \
         f"Path {onnx_path} does not exist or is not a onnx file."
 
@@ -78,7 +80,7 @@ def infer(onnx_path: pathlib.Path, wav_folder: pathlib.Path, out_path: pathlib.P
     inference.load_model()
     inference.get_dataset(wav_folder=wav_folder, language=language, g2p=g2p, dictionary_path=dictionary)
     inference.infer(non_lexical_phonemes=non_lexical_phonemes, pad_times=pad_times, pad_length=pad_length)
-    inference.export(output_folder=wav_folder if out_path is None else out_path, output_format=['textgrid'])
+    inference.export(output_folder=wav_folder if out_path is None else out_path, output_format=[out_format.lower()])
 
 
 if __name__ == '__main__':

@@ -86,9 +86,11 @@ class InferenceLit(InferenceBase):
 @click.option("--pad_times", "-pt", type=int, default=1, help="The number of times to pad blank audio before reasoning")
 @click.option("--pad_length", "-pl", type=int, default=5,
               help="The max length of blank audio on the pad before inference")
+@click.option("--out_format", "-f", type=click.Choice(['TextGrid', 'HTK']), default='TextGrid',
+              help="Format to export predictions to.")
 def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, out_path: pathlib.Path | None, encoder: pathlib.Path | None,
           wav_folder: pathlib.Path, g2p: str, non_lexical_phonemes: str, language: str, dictionary: pathlib.Path,
-          pad_times: int, pad_length: int):
+          pad_times: int, pad_length: int, out_format: str):
     assert nll_path.exists() and nll_path.is_file() and nll_path.suffix == '.ckpt', \
         f"Path {nll_path} does not exist or is not a ckpt file."
     assert fa_path.exists() and fa_path.is_file() and fa_path.suffix == '.ckpt', \
@@ -100,7 +102,7 @@ def infer(nll_path: pathlib.Path, fa_path: pathlib.Path, out_path: pathlib.Path 
     inference.load_model()
     inference.get_dataset(wav_folder=wav_folder, language=language, g2p=g2p, dictionary_path=dictionary)
     inference.infer(non_lexical_phonemes=non_lexical_phonemes, pad_times=pad_times, pad_length=pad_length)
-    inference.export(output_folder=wav_folder if out_path is None else out_path, output_format=['textgrid'])
+    inference.export(output_folder=wav_folder if out_path is None else out_path, output_format=[out_format.lower()] )
 
 
 if __name__ == '__main__':
