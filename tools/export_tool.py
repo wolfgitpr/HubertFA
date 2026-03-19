@@ -34,8 +34,8 @@ class Exporter:
 
     def save_htk(self):
         print("Saving HTK Labels...")
-        w_out, ph_out = "", ""
         for wav_path, wav_length, words in self.predictions:
+            w_out, ph_out = "", ""
             wav_path = pathlib.Path(wav_path)
 
             for word in words:
